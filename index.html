@@ -5,22 +5,45 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Mezo Plays Pokémon – ChainPlays UI</title>
   <style>
-    :root { --bg:#0b0f14; --card:#121821; --text:#e6eef8; --sub:#9fb0c3; --accent:#5eead4; }
+    /* Mezo brand theme: charcoal + hot pink accent */
+    :root {
+      --bg: #0b0a0e;            /* page background (near-black with a hint of magenta) */
+      --card: #101018;          /* cards & panels */
+      --text: #f3f4f6;          /* primary text */
+      --sub: #b6bac7;           /* secondary text */
+      --accent: #ff0050;        /* Mezo pink */
+      --edge: #2a0d1a;          /* borders (pink-tinted charcoal) */
+      --edge-soft: #1a0a12;     /* subtle borders */
+      --surface: #0f0e15;       /* inputs/buttons base */
+      --surface-2: #14121a;     /* badges/mono blocks */
+    }
+
     body { margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial; }
     .wrap { max-width:880px; margin:40px auto; padding:24px; }
-    .card { background:var(--card); border:1px solid #1e293b; border-radius:16px; padding:20px; box-shadow:0 8px 24px rgba(0,0,0,.25); }
+    .card { background:var(--card); border:1px solid var(--edge); border-radius:16px; padding:20px; box-shadow:0 8px 24px rgba(0,0,0,.25); }
     h1 { font-size:28px; margin:0 0 8px; }
     p { color:var(--sub); margin:0 0 16px; }
     .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
-    button, input { height:44px; border-radius:10px; border:1px solid #2a3a4f; background:#0e1520; color:var(--text); padding:0 14px; font-weight:600; }
+
+    button, input { height:44px; border-radius:10px; border:1px solid var(--edge); background:var(--surface); color:var(--text); padding:0 14px; font-weight:600; }
+    select { height:44px; border-radius:10px; border:1px solid var(--edge); background:var(--surface); color:var(--text); padding:0 14px; font-weight:600; }
+    /* override inline styles on the chain select if present */
+    select#chain { background: var(--surface) !important; border-color: var(--edge) !important; color: var(--text) !important; }
+
     button { cursor:pointer; }
-    button.primary { background:linear-gradient(180deg,#1f364d,#142235); }
-    button:hover { filter:brightness(1.05); }
+    button.primary { background:linear-gradient(180deg, #ff2b6a, #ff0050); border-color:#b8003b; color:#fff; }
+    button:hover { filter:brightness(1.06); }
+
     .pad { display:grid; grid-template-columns:repeat(3,100px); gap:10px; justify-content:center; margin-top:10px; }
-    .pad button { height:64px; font-size:18px; }
+    .pad button { height:64px; font-size:18px; background:linear-gradient(180deg, #ff2b6a, #ff0050); border-color:#b8003b; color:#fff; }
+    .pad button:disabled { opacity:.65; cursor:wait; }
     .keys { display:grid; grid-template-columns:repeat(2,100px); gap:10px; justify-content:center; margin-top:10px; }
-    .stat { font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; background:#0a111b; border:1px solid #1f2a3a; padding:10px 12px; border-radius:10px; white-space:pre-line; }
-    .badge { padding:4px 10px; border-radius:999px; background:#0a1722; border:1px solid #243042; color:var(--sub); font-size:12px; }
+    .keys button { background:linear-gradient(180deg, #ff2b6a, #ff0050); border-color:#b8003b; color:#fff; }
+    .keys button:disabled { opacity:.65; cursor:wait; }
+    .keys { display:grid; grid-template-columns:repeat(2,100px); gap:10px; justify-content:center; margin-top:10px; }
+
+    .stat { font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; background:var(--surface-2); border:1px solid var(--edge-soft); padding:10px 12px; border-radius:10px; white-space:pre-line; }
+    .badge { padding:4px 10px; border-radius:999px; background:var(--surface-2); border:1px solid var(--edge); color:var(--sub); font-size:12px; }
     .spacer { height:16px; }
     a { color: var(--accent); text-decoration: none; }
     .grid { display:grid; gap:12px; }
