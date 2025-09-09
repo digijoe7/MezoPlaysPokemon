@@ -131,44 +131,38 @@
   </div>
 
   <!-- Ethers v5 (UMD) for injected wallets like MetaMask/Rabby) -->
-  <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js">  
-  // --- Mezo Mainnet connect helper (forces 31612) ---
-  async function ensureInjectedMezo(){
-    const eth = window.ethereum;
-    if (!eth) { alert('No injected wallet found. Install MetaMask/Rabby.'); throw new Error('no-wallet'); }
-    eip1193 = eth;
-    await eth.request({ method: 'eth_requestAccounts' });
-
-    const desired = 31612; // Mezo Mainnet
-    const toHex = (n) => '0x' + n.toString(16);
-    try {
-      const currentHex = await eth.request({ method: 'eth_chainId' });
-      const current = parseInt(currentHex, 16);
-      if (current !== desired) {
-        try {
-          await eth.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: toHex(desired) }] });
-        } catch (e) {
-          if (e.code === 4902 || e?.data?.originalError?.code === 4902) {
-            await eth.request({ method: 'wallet_addEthereumChain', params: [{
-              chainId: '0x7B7C', // 31612
-              chainName: 'Mezo Mainnet',
-              nativeCurrency: { name: 'Bitcoin', symbol: 'BTC', decimals: 18 },
-              rpcUrls: ['https://mainnet.mezo.public.validationcloud.io'],
-              blockExplorerUrls: ['https://explorer.mezo.org']
-            }]});
-            await eth.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x7B7C' }] });
-          } else { throw e; }
-        }
-      }
-    } catch (e) { console.error('chain switch/add failed', e); throw e; }
-
-    // Ethers v6 provider
-    provider = new ethers.BrowserProvider(eip1193);
-    signer = await provider.getSigner();
-    return { addr: await signer.getAddress() };
-  }
-</script>
-
+  <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+  <!-- Early safety wrapper: coerce any 0x7B6C/31596 add/switch to 0x7B7C (31612) -->
+  <script>
+    (function earlyMezoWrap(){
+      const eth = window.ethereum; if(!eth || eth.__mezoWrappedEarly) return;
+      const orig = eth.request.bind(eth);
+      const MEZO_HEX='0x7b7c';
+      const MEZO_PARAMS={
+        chainId: MEZO_HEX,
+        chainName:'Mezo Mainnet',
+        nativeCurrency:{name:'Bitcoin',symbol:'BTC',decimals:18},
+        rpcUrls:['https://mainnet.mezo.public.validationcloud.io'],
+        blockExplorerUrls:['https://explorer.mezo.org']
+      };
+      eth.request = (args)=>{
+        try{
+          if(args?.method==='wallet_addEthereumChain'){
+            const p = Array.isArray(args.params)&&args.params[0]?{...args.params[0]}:{};
+            const id=String(p.chainId||'').toLowerCase();
+            if(id==='0x7b6c'||id==='31596'){ return orig({ ...args, params:[MEZO_PARAMS] }); }
+          }
+          if(args?.method==='wallet_switchEthereumChain'){
+            const p = Array.isArray(args.params)&&args.params[0]?{...args.params[0]}:{};
+            const id=String(p.chainId||'').toLowerCase();
+            if(id==='0x7b6c'||id==='31596'){ return orig({ ...args, params:[{chainId:MEZO_HEX}] }); }
+          }
+        }catch(_){}
+        return orig(args);
+      };
+      eth.__mezoWrappedEarly = true;
+    })();
+  </script>
   <script>
     (function(){
       const ethers = window.ethers; // v5 UMD
