@@ -142,7 +142,7 @@
           say('No injected wallet found. Install MetaMask/Rabby/OKX or open in the wallet\'s in-app browser.');
           throw new Error('no-injected-wallet');
         }
-        if (!provider) provider = new ethers.providers.Web3Provider(window.ethereum);
+        if (!provider) provider = new ethers.providers.Web3Provider(window.ethereum, 'any');
         const accs = await provider.listAccounts();
         if (accs.length === 0) await provider.send('eth_requestAccounts', []);
         signer = provider.getSigner();
@@ -162,7 +162,7 @@
             }
           }
           // refresh provider network state
-          provider = new ethers.providers.Web3Provider(window.ethereum);
+          provider = new ethers.providers.Web3Provider(window.ethereum, 'any');
           signer = provider.getSigner();
           const net2 = await provider.getNetwork();
           netEl.textContent = `Network: ${net2.chainId}`;
@@ -228,6 +228,20 @@
           console.error(e);
           say('Error: ' + (e?.error?.message || e?.data?.message || e?.message || e));
         }
+      }
+
+      // Rebuild provider on chain change to avoid ethers v5 NETWORK_ERROR
+      if (window.ethereum?.on) {
+        window.ethereum.on('chainChanged', async (_cid) => {
+          try {
+            provider = new ethers.providers.Web3Provider(window.ethereum, 'any');
+            signer = provider.getSigner();
+            const net = await provider.getNetwork();
+            netEl.textContent = `Network: ${net.chainId}`;
+          } catch (e) {
+            statusEl.textContent = 'Reconnected after chain change';
+          }
+        });
       }
 
       // UI wiring
