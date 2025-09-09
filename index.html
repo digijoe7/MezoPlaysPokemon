@@ -150,13 +150,13 @@
         } catch (e) {
           if (e.code === 4902 || e?.data?.originalError?.code === 4902) {
             await eth.request({ method: 'wallet_addEthereumChain', params: [{
-              chainId: '0x7B6C', // 31612
+              chainId: '0x7B7C', // 31612
               chainName: 'Mezo Mainnet',
               nativeCurrency: { name: 'Bitcoin', symbol: 'BTC', decimals: 18 },
               rpcUrls: ['https://mainnet.mezo.public.validationcloud.io'],
               blockExplorerUrls: ['https://explorer.mezo.org']
             }]});
-            await eth.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x7B6C' }] });
+            await eth.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x7B7C' }] });
           } else { throw e; }
         }
       }
@@ -176,7 +176,7 @@
       // === Mezo chain config ===
       const MEZO_MAINNET = 31612;
       const MEZO_PARAMS = {
-        chainId: '0x7B6C',
+        chainId: '0x7B7C',
         chainName: 'Mezo Mainnet',
         nativeCurrency: { name: 'Bitcoin', symbol: 'BTC', decimals: 18 },
         rpcUrls: ['https://mainnet.mezo.public.validationcloud.io'],
