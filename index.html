@@ -517,5 +517,40 @@
       });
     })();
   </script>
+  <script>
+    (function(){
+      function wrapAddChain(){
+        const eth = window.ethereum; if(!eth || eth.__mezoWrapped) return;
+        const orig = eth.request.bind(eth);
+        eth.request = async (args) => {
+          try {
+            if(args?.method === 'wallet_addEthereumChain'){
+              const p = Array.isArray(args.params) ? { ...(args.params[0]||{}) } : {};
+              const id = String(p.chainId||'').toLowerCase();
+              if(id === '0x7b6c' || id === '31596'){
+                p.chainId = '0x7B7C';
+                p.chainName = p.chainName || 'Mezo Mainnet';
+                p.rpcUrls = ['https://mainnet.mezo.public.validationcloud.io'];
+                p.blockExplorerUrls = ['https://explorer.mezo.org'];
+                p.nativeCurrency = { name:'Bitcoin', symbol:'BTC', decimals:18 };
+                return orig({ ...args, params:[p] });
+              }
+            }
+            if(args?.method === 'wallet_switchEthereumChain'){
+              const p = Array.isArray(args.params) ? { ...(args.params[0]||{}) } : {};
+              const id = String(p.chainId||'').toLowerCase();
+              if(id === '0x7b6c'){
+                p.chainId = '0x7B7C';
+                return orig({ ...args, params:[p] });
+              }
+            }
+          } catch(e) { /* fall through to original */ }
+          return orig(args);
+        };
+        eth.__mezoWrapped = true;
+      }
+      window.addEventListener('DOMContentLoaded', wrapAddChain);
+    })();
+  </script>
 </body>
 </html>
