@@ -144,6 +144,14 @@
     }
     updateExplorerLink();
 
+    // If no injected wallet is available, make the connect button install MetaMask
+    if (!window.ethereum) {
+      connectBtn.textContent = 'Install MetaMask';
+      connectBtn.onclick = () => window.open('https://metamask.io/download/', '_blank');
+      // If WalletConnect PID provided, allow QR connect as alternative
+      if (WC_PID) document.getElementById('connectQR').style.display = 'inline-block';
+    }
+
     let provider, signer, contract; // ethers objects
     let eip1193; // raw provider (injected or walletconnect)
     let lastCmd = null;
@@ -250,8 +258,9 @@
       const now = new Date().toLocaleTimeString();
       const line = `[${now}] ${e.sender} → cmd=${e.cmd} memo="${e.memo}" tx=${e.txHash?.slice(0,10) || '—'}`;
       const prev = eventsEl.textContent;
-      eventsEl.textContent = prev === 'Recent events (client-side): none' ? line : prev + "
-" + line;
+      eventsEl.textContent = (prev === 'Recent events (client-side): none' || !prev)
+        ? line
+        : prev + "\n" + line;
     }
 
     padButtons.forEach(btn => {
