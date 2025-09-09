@@ -1,200 +1,348 @@
 <!doctype html>
-<html lang="en">
+<html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>ChainPlays – Gameboy Frontend</title>
-  <!-- Ethers v5 UMD -->
-  <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+  <title>Mezo Plays Pokémon – ChainPlays UI</title>
   <style>
-    :root{--bg:#0b0f14;--fg:#e6edf3;--muted:#96a1aa;--accent:#58a6ff;--card:#11161d;--ok:#2ea043;--err:#f85149}
-    body{margin:0;font:16px/1.5 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial;color:var(--fg);background:linear-gradient(180deg,#0b0f14,#0d1218)}
-    .wrap{max-width:760px;margin:32px auto;padding:24px}
-    .card{background:var(--card);border:1px solid #1f2630;border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.35);padding:20px}
-    h1{font-size:22px;margin:0 0 16px}
-    p.small{color:var(--muted);margin-top:6px}
-    button{cursor:pointer;background:var(--accent);border:none;color:#081018;font-weight:700;padding:12px 16px;border-radius:12px;min-width:84px}
-    button.secondary{background:#202731;color:var(--fg);border:1px solid #2a3340}
-    input{width:100%;padding:12px 14px;border-radius:12px;border:1px solid #2a323d;background:#0f141b;color:var(--fg);outline:none}
-    input:focus{border-color:var(--accent)}
-    .actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:16px}
-    .status{margin-top:14px;padding:12px;border-radius:12px;background:#0f151c;border:1px solid #1f2732;color:var(--muted)}
-    .status.ok{color:#c9f7d1;border-color:#284d34;background:#0e1a13}
-    .status.err{color:#ffd6d6;border-color:#4b2727;background:#1a0e0e}
-    .grid{display:grid;grid-template-columns:repeat(4, minmax(84px,1fr));gap:12px;margin-top:8px}
-    .log{margin-top:18px;max-height:280px;overflow:auto;border:1px solid #1f2732;border-radius:12px;background:#0e141a}
-    .log table{width:100%;border-collapse:collapse}
-    .log th,.log td{padding:10px;border-bottom:1px solid #1b222c;font-size:14px}
-    .log th{text-align:left;color:var(--muted);position:sticky;top:0;background:#0f151c}
-    .pill{display:inline-block;padding:2px 8px;border-radius:999px;background:#1e2a38;color:#c9d8e8;border:1px solid #2a3646;font-size:12px}
+    :root { --bg:#0b0f14; --card:#121821; --text:#e6eef8; --sub:#9fb0c3; --accent:#5eead4; }
+    body { margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial; }
+    .wrap { max-width:880px; margin:40px auto; padding:24px; }
+    .card { background:var(--card); border:1px solid #1e293b; border-radius:16px; padding:20px; box-shadow:0 8px 24px rgba(0,0,0,.25); }
+    h1 { font-size:28px; margin:0 0 8px; }
+    p { color:var(--sub); margin:0 0 16px; }
+    .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+    button, input { height:44px; border-radius:10px; border:1px solid #2a3a4f; background:#0e1520; color:var(--text); padding:0 14px; font-weight:600; }
+    button { cursor:pointer; }
+    button.primary { background:linear-gradient(180deg,#1f364d,#142235); }
+    button:hover { filter:brightness(1.05); }
+    .pad { display:grid; grid-template-columns:repeat(3,100px); gap:10px; justify-content:center; margin-top:10px; }
+    .pad button { height:64px; font-size:18px; }
+    .keys { display:grid; grid-template-columns:repeat(2,100px); gap:10px; justify-content:center; margin-top:10px; }
+    .stat { font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; background:#0a111b; border:1px solid #1f2a3a; padding:10px 12px; border-radius:10px; }
+    .badge { padding:4px 10px; border-radius:999px; background:#0a1722; border:1px solid #243042; color:var(--sub); font-size:12px; }
+    .spacer { height:16px; }
+    a { color: var(--accent); text-decoration: none; }
+    .grid { display:grid; gap:12px; }
+    .two { grid-template-columns:1fr 1fr; }
+    @media (max-width:840px){ .two { grid-template-columns:1fr; } }
   </style>
 </head>
 <body>
   <div class="wrap">
     <div class="card">
-      <h1>ChainPlays – Gameboy Frontend</h1>
-      <p class="small">Press a button to send <code>move(cmd, memo)</code>. No storage—just events.</p>
+      <h1>Mezo Plays Pokémon</h1>
+      <p>Send on-chain inputs to the <code>ChainPlays</code> contract deployed on Mezo Mainnet. Each press calls <code>move(cmd, memo)</code> and emits a <code>Move</code> event.</p>
 
-      <div class="actions">
-        <button id="btnConnect">Connect Wallet</button>
-        <button id="btnStatus" class="secondary">Status</button>
-        <button id="btnWatch" class="secondary">Watch events</button>
+      <div class="row" style="margin-bottom:8px">
+        <label class="badge">Contract</label>
+        <input id="contract" value="0x7c8A35C98Bf46a67324Af3F54aD027DBE2138E98" style="min-width:320px" />
+        <label class="badge">Chain</label>
+        <select id="chain" style="height:44px;border-radius:10px;background:#0e1520;color:var(--text);border:1px solid #2a3a4f;">
+          <option value="31612" selected>Mezo Mainnet (31612)</option>
+          <option value="31611">Mezo Testnet (31611)</option>
+        </select>
+        <button id="saveCfg">Save</button>
       </div>
 
-      <label for="memo" style="display:block;margin-top:12px;color:#96a1aa">Memo (optional)</label>
-      <input id="memo" maxlength="128" placeholder="e.g. GG ez" />
+      <div class="row">
+        <button id="connect" class="primary">Connect Wallet</button>
+        <button id="connectQR" title="WalletConnect QR (optional)" style="display:none">Connect via QR</button>
+        <button id="disconnect" style="display:none">Disconnect</button>
+        <button id="addMezo" title="Force add Mezo network">Add Mezo Network</button>
+        <button id="switchMezo" title="Force switch to Mezo">Switch to Mezo</button>
+        <div id="acct" class="stat">Not connected</div>
+        <div id="net" class="badge">Network: —</div>
+        <a id="expl" class="badge" href="https://explorer.mezo.org/address/0x7c8A35C98Bf46a67324Af3F54aD027DBE2138E98" target="_blank" rel="noreferrer">Open in Explorer</a>
+      </div>
 
-      <!-- Gameboy buttons -->
-      <div class="grid" id="gameboyButtons"></div>
-
-      <div id="status" class="status">Not connected.</div>
-
-      <div class="log" id="log" hidden>
-        <table>
-          <thead>
-            <tr><th>Block</th><th>Sender</th><th>Cmd</th><th>Weight</th><th>Memo</th></tr>
-          </thead>
-          <tbody id="tbody"></tbody>
-        </table>
+      <div class="spacer"></div>
+      <div class="grid two">
+        <div>
+          <div class="pad">
+            <div></div>
+            <button data-cmd="0">↑ Up</button>
+            <div></div>
+            <button data-cmd="2">← Left</button>
+            <button data-cmd="1">↓ Down</button>
+            <button data-cmd="3">→ Right</button>
+          </div>
+          <div class="keys">
+            <button data-cmd="4">A</button>
+            <button data-cmd="5">B</button>
+            <button data-cmd="6">Start</button>
+            <button data-cmd="7">Select</button>
+          </div>
+        </div>
+        <div>
+          <div class="row">
+            <input id="memo" placeholder="Optional memo (e.g., 'Go!')" style="flex:1;min-width:260px" />
+            <button id="send" class="primary">Send Last Click</button>
+          </div>
+          <div class="spacer"></div>
+          <div class="grid">
+            <div class="stat" id="status">Status: idle</div>
+            <div class="stat" id="gas">Gas est.: —</div>
+            <div class="stat" id="last">Last tx: —</div>
+            <div class="stat" id="events">Recent events (client-side): none</div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
 
-<script>
-(function(){
-  // Ethers (UMD) lives on window.ethers
-  const ethers = window.ethers;
+  <script type="module">
+    import { ethers } from "https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.min.js";
 
-  // Hard-coded contract address
-  const CONTRACT_ADDR = "0x7c8A35C98Bf46a67324Af3F54aD027DBE2138E98";
+    // Optional WalletConnect support via Web3Modal (free).
+    // Set window.WEB3MODAL_PROJECT_ID = "<your_project_id>" before this script OR edit below.
+    const WC_PID = window.WEB3MODAL_PROJECT_ID || ""; // leave blank to disable QR option
+    let w3m, w3mProvider; // populated if WC_PID present
 
-  // Minimal ABI (function + event)
-  const ABI = [
-    "function move(uint8 cmd, string memo)",
-    "event Move(address indexed sender, uint8 cmd, uint256 weight, string memo)"
-  ];
-
-  // Command mapping
-  const CMD = {
-    0: "Up",
-    1: "Down",
-    2: "Left",
-    3: "Right",
-    4: "A",
-    5: "B",
-    6: "Start",
-    7: "Select",
-  };
-
-  // DOM
-  const $ = (id)=>document.getElementById(id);
-  const statusEl = $("status");
-  const memoEl   = $("memo");
-  const logEl    = $("log");
-  const tbody    = $("tbody");
-
-  let provider, signer;
-
-  function say(msg, cls){
-    statusEl.className = "status" + (cls ? " " + cls : "");
-    statusEl.textContent = msg;
-  }
-
-  async function ensureWallet(){
-    if(!window.ethereum){
-      say("No wallet found. Install MetaMask/Rabby.", "err");
-      throw new Error("no-wallet");
+    if (WC_PID) {
+      const w3mScript = document.createElement('script');
+      w3mScript.src = 'https://unpkg.com/@walletconnect/web3modal@2.7.2/dist/index.umd.js';
+      w3mScript.onload = () => {
+        const { Web3Modal } = window['web3modal'];
+        w3m = new Web3Modal({
+          projectId: WC_PID,
+          chains: [{ chainId: 31612, name: 'Mezo Mainnet', rpcUrl: 'https://mainnet.mezo.public.validationcloud.io' }, { chainId: 31611, name: 'Mezo Testnet', rpcUrl: 'https://rpc.test.mezo.org' }],
+          walletImages: {},
+        });
+        // show QR button
+        document.getElementById('connectQR').style.display = 'inline-block';
+      };
+      document.head.appendChild(w3mScript);
     }
-    if(!provider){ provider = new ethers.providers.Web3Provider(window.ethereum); }
-    const accounts = await provider.listAccounts();
-    if(accounts.length === 0){
-      await provider.send("eth_requestAccounts", []);
+
+    const ABI = [
+      "function move(uint8 cmd, string memo)",
+      "event Move(address indexed sender, uint8 cmd, uint256 weight, string memo)"
+    ];
+
+    const qs = (id) => document.getElementById(id);
+    const padButtons = Array.from(document.querySelectorAll('[data-cmd]'));
+
+    const contractInput = qs('contract');
+    const chainSelect   = qs('chain');
+    const connectBtn    = qs('connect');
+    const connectQRBtn  = qs('connectQR');
+    const disconnectBtn = qs('disconnect');
+    const addMezoBtn    = qs('addMezo');
+    const switchMezoBtn = qs('switchMezo');
+    const acctEl        = qs('acct');
+    const netEl         = qs('net');
+    const explEl        = qs('expl');
+    const statusEl      = qs('status');
+    const gasEl         = qs('gas');
+    const lastEl        = qs('last');
+    const eventsEl      = qs('events');
+
+    function explorerBase() {
+      return Number(chainSelect.value) === 31611 ? 'https://explorer.test.mezo.org' : 'https://explorer.mezo.org';
     }
-    signer = provider.getSigner();
-    const a = await signer.getAddress();
-    const n = await provider.getNetwork();
-    say(`Connected: ${a.slice(0,6)}…${a.slice(-4)} on chain ${n.chainId}`, "ok");
-    return { a, n };
-  }
-
-  function getContract(){
-    return new ethers.Contract(CONTRACT_ADDR, ABI, signer || provider);
-  }
-
-  async function sendMove(cmdIndex){
-    try{
-      await ensureWallet();
-      const c = getContract();
-      const memo = memoEl.value || "";
-      const tx = await c.connect(signer).move(cmdIndex, memo);
-      say(`Sent: ${tx.hash}. Waiting for 1 confirmation…`);
-      const rcpt = await tx.wait(1);
-      say(`Confirmed in block ${rcpt.blockNumber}. Tx: ${tx.hash}`, "ok");
-    }catch(e){
-      console.error(e);
-      say(e?.error?.message || e?.data?.message || e.message || String(e), "err");
+    function updateExplorerLink() {
+      const addr = contractInput.value.trim();
+      if (!addr) return;
+      explEl.href = `${explorerBase()}/address/${addr}`;
     }
-  }
+    updateExplorerLink();
 
-  function setupButtons(){
-    const container = $("gameboyButtons");
-    // nice order: D-pad, A/B, Start/Select
-    const order = [0,1,2,3,4,5,6,7];
-    order.forEach((i)=>{
-      const btn = document.createElement("button");
-      btn.textContent = CMD[i];
-      btn.onclick = ()=>sendMove(i);
-      container.appendChild(btn);
-    });
-  }
+    let provider, signer, contract; // ethers objects
+    let eip1193; // raw provider (injected or walletconnect)
+    let lastCmd = null;
 
-  $("btnConnect").onclick = ensureWallet;
-  $("btnStatus").onclick = async()=>{ try{ await ensureWallet(); }catch(e){ say(e.message, "err"); } };
+    // --- network helpers ---
+    async function ensureNetwork(chainId) {
+      if (!eip1193) return;
+      try {
+        const current = await eip1193.request({ method: 'eth_chainId' });
+        if (parseInt(current, 16) === chainId) return;
+        await eip1193.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x' + chainId.toString(16) }] });
+      } catch (e) {
+        if (e.code === 4902 || (''+e.message).includes('Unrecognized chain')) {
+          await addMezo(chainId);
+          return;
+        }
+        throw e;
+      }
+    }
 
-  $("btnWatch").onclick = async()=>{
-    try{
-      await ensureWallet();
-      const c = getContract();
-      logEl.hidden = false;
-      tbody.innerHTML = "";
+    async function addMezo(chainId) {
+      const params = chainId === 31611 ? {
+        chainId: '0x7B6B', chainName: 'Mezo Testnet', nativeCurrency: { name:'Bitcoin', symbol:'BTC', decimals:18 }, rpcUrls: ['https://rpc.test.mezo.org'], blockExplorerUrls: ['https://explorer.test.mezo.org']
+      } : {
+        chainId: '0x7B6C', chainName: 'Mezo Mainnet', nativeCurrency: { name:'Bitcoin', symbol:'BTC', decimals:18 }, rpcUrls: ['https://mainnet.mezo.public.validationcloud.io'], blockExplorerUrls: ['https://explorer.mezo.org']
+      };
+      await eip1193.request({ method:'wallet_addEthereumChain', params:[params] });
+    }
 
-      // Backfill recent events then stream new ones
-      const latest = await provider.getBlockNumber();
-      const fromBlock = Math.max(latest - 200, 0);
-      const filter = c.filters.Move();
-
-      const past = await c.queryFilter(filter, fromBlock, latest);
-      past.forEach(addRow);
-
-      c.on(filter, (sender, cmd, weight, memo, evt)=>{
-        addRow({ args:{ sender, cmd, weight, memo }, blockNumber: evt.blockNumber });
+    function wireProviderEvents() {
+      if (!eip1193) return;
+      eip1193.on?.('accountsChanged', (accs) => {
+        if (accs?.length) acctEl.textContent = 'Player: ' + accs[0];
+        else resetConnection();
       });
-
-      say(`Watching Move events from block ${fromBlock} → live…`, "ok");
-    }catch(e){
-      say(e.message || String(e), "err");
+      eip1193.on?.('chainChanged', async () => {
+        const net = await provider.getNetwork();
+        netEl.textContent = `Network: ${net.chainId}`;
+      });
+      eip1193.on?.('disconnect', resetConnection);
     }
-  };
 
-  function addRow(log){
-    const tr = document.createElement("tr");
-    const { sender, cmd, weight, memo } = log.args;
-    const cmdNum = Number(cmd.toString ? cmd.toString() : cmd);
-    tr.innerHTML = `
-      <td><span class="pill">#${log.blockNumber}</span></td>
-      <td>${sender.slice(0,6)}…${sender.slice(-4)}</td>
-      <td>${CMD[cmdNum] ?? cmdNum}</td>
-      <td>${weight.toString?.() ?? weight}</td>
-      <td>${escapeHtml(String(memo))}</td>`;
-    tbody.prepend(tr);
-  }
+    function resetConnection() {
+      provider = signer = contract = undefined;
+      acctEl.textContent = 'Not connected';
+      netEl.textContent = 'Network: —';
+      statusEl.textContent = 'Status: idle';
+      disconnectBtn.style.display = 'none';
+    }
 
-  function escapeHtml(s){
-    return s.replace(/[&<>\"']/g, (c)=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
-  }
+    async function connectInjected() {
+      // select the best injected provider if multiple
+      const eth = window.ethereum?.providers?.length ?
+        window.ethereum.providers.find(p => p.isMetaMask) || window.ethereum.providers[0] :
+        window.ethereum;
+      if (!eth) {
+        alert('No injected wallet found. Install MetaMask/OKX/Bitget, or use QR connect.');
+        return;
+      }
+      eip1193 = eth;
+      try {
+        await eip1193.request({ method: 'eth_requestAccounts' });
+      } catch (err) {
+        statusEl.textContent = 'Error (requestAccounts): ' + (err?.message || err);
+        return;
+      }
+      try {
+        await ensureNetwork(Number(chainSelect.value));
+      } catch (err) {
+        statusEl.textContent = 'Error (ensureNetwork): ' + (err?.message || err);
+        return;
+      }
+      provider = new ethers.BrowserProvider(eip1193);
+      try {
+        signer = await provider.getSigner();
+      } catch (err) {
+        statusEl.textContent = 'Error (getSigner): ' + (err?.message || err);
+        return;
+      }
+      await postConnect();
+    } {
+      const eth = window.ethereum;
+      if (!eth) {
+        alert('No injected wallet found. Install MetaMask/OKX/Bitget, or use QR connect.');
+        return;
+      }
+      eip1193 = eth;
+      await eip1193.request({ method: 'eth_requestAccounts' });
+      await ensureNetwork(Number(chainSelect.value));
+      provider = new ethers.BrowserProvider(eip1193);
+      signer = await provider.getSigner();
+      await postConnect();
+    }
 
-  setupButtons();
-})();
-</script>
+    async function connectQR() {
+      if (!w3m) {
+        alert('QR option requires a free WalletConnect projectId.');
+        return;
+      }
+      const session = await w3m.openModal();
+      eip1193 = session?.getEthereumProvider?.() || session?.provider || window.ethereum; // best-effort
+      if (!eip1193) { alert('Failed to get provider'); return; }
+      provider = new ethers.BrowserProvider(eip1193);
+      signer = await provider.getSigner();
+      await postConnect();
+    }
+
+    async function postConnect() {
+      wireProviderEvents();
+      const addr = await signer.getAddress();
+      acctEl.textContent = 'Player: ' + addr;
+      const net = await provider.getNetwork();
+      netEl.textContent = `Network: ${net.chainId}`;
+      const caddr = contractInput.value.trim();
+      if (!caddr) { alert('Enter your deployed contract address, then click Save.'); return; }
+      contract = new ethers.Contract(caddr, ABI, signer);
+      statusEl.textContent = 'Status: connected';
+      updateExplorerLink();
+      try {
+        contract.on('Move', (sender, cmd, weight, memo, ev) => {
+          appendEvent({ sender, cmd: Number(cmd), memo, txHash: ev.log.transactionHash });
+        });
+      } catch {}
+      disconnectBtn.style.display = 'inline-block';
+    }
+
+    connectBtn.onclick = connectInjected;
+    connectQRBtn.onclick = connectQR;
+    disconnectBtn.onclick = async () => { try { await w3m?.disconnect?.(); } catch {} resetConnection(); };
+    addMezoBtn.onclick = async () => {
+      try {
+        eip1193 = window.ethereum || eip1193;
+        if (!eip1193) return alert('No wallet found.');
+        await addMezo(Number(chainSelect.value));
+        statusEl.textContent = 'Added network to wallet.';
+      } catch (e) { statusEl.textContent = 'Add network error: ' + (e?.message || e); }
+    };
+    switchMezoBtn.onclick = async () => {
+      try {
+        eip1193 = window.ethereum || eip1193;
+        if (!eip1193) return alert('No wallet found.');
+        await ensureNetwork(Number(chainSelect.value));
+        statusEl.textContent = 'Switched to Mezo.';
+      } catch (e) { statusEl.textContent = 'Switch error: ' + (e?.message || e); }
+    };
+
+    function appendEvent(e) {
+      const now = new Date().toLocaleTimeString();
+      const line = `[${now}] ${e.sender} → cmd=${e.cmd} memo="${e.memo}" tx=${e.txHash?.slice(0,10) || '—'}`;
+      const prev = eventsEl.textContent;
+      eventsEl.textContent = prev === 'Recent events (client-side): none' ? line : prev + "
+" + line;
+    }
+
+    padButtons.forEach(btn => {
+      btn.addEventListener('click', async () => {
+        lastCmd = Number(btn.dataset.cmd);
+        statusEl.textContent = `Selected command: ${lastCmd}`;
+        await estimate();
+      });
+    });
+
+    qs('send').onclick = async () => {
+      if (lastCmd === null) { alert('Press a command button first.'); return; }
+      await send(lastCmd, qs('memo').value || '');
+    };
+
+    async function estimate() {
+      try {
+        if (!contract) return;
+        const memo = qs('memo').value || '';
+        const gas = await contract.move.estimateGas(lastCmd, memo);
+        const fees = await provider.getFeeData();
+        const price = fees.gasPrice || fees.maxFeePerGas || 0n;
+        const cost = gas * price;
+        gasEl.textContent = `Gas est.: ~${gas} @ ${ethers.formatUnits(price, 9)} gwei → cost ≈ ${ethers.formatUnits(cost, 18)} BTC`;
+      } catch (err) {
+        gasEl.textContent = 'Gas est.: (failed to estimate — will send anyway)';
+      }
+    }
+
+    async function send(cmd, memo) {
+      if (!contract) { alert('Connect first.'); return; }
+      try {
+        statusEl.textContent = 'Sending…';
+        const tx = await contract.move(cmd, memo, { gasLimit: 300000 });
+        lastEl.textContent = 'Last tx: ' + tx.hash;
+        statusEl.textContent = 'Mining…';
+        const rc = await tx.wait();
+        statusEl.textContent = 'Mined in block ' + rc.blockNumber;
+      } catch (e) {
+        console.error(e);
+        statusEl.textContent = 'Error: ' + (e?.shortMessage || e?.message || e);
+      }
+    }
+  </script>
 </body>
 </html>
