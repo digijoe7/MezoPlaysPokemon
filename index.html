@@ -146,7 +146,7 @@
       const contractInput= $('contract');
       const chainSelect  = $('chain');
 
-      let provider, signer, contract, lastCmd = null;
+      let provider, signer, contract, lastCmd = null, sending = false;
 
       function say(msg){ statusEl.textContent = msg; }
 
@@ -288,6 +288,38 @@
         if (lastCmd === null){ alert('Press a command button first.'); return; }
         await send(lastCmd, $('memo').value || '');
       };
+
+      // --- Keyboard controls ---
+      function keyToCmd(evt){
+        const k = evt.key;
+        if (k === 'ArrowUp') return 0;     // Up
+        if (k === 'ArrowDown') return 1;   // Down
+        if (k === 'ArrowLeft') return 2;   // Left
+        if (k === 'ArrowRight') return 3;  // Right
+        if (k && k.length === 1 && k.toLowerCase() === 'a') return 4; // A
+        if (k && k.length === 1 && k.toLowerCase() === 'b') return 5; // B
+        // Optional quality-of-life mappings:
+        if (k === 'Enter') return 6;       // Start
+        if (k === 'Shift') return 7;       // Select
+        return null;
+      }
+
+      document.addEventListener('keydown', async (evt) => {
+        const cmd = keyToCmd(evt);
+        if (cmd === null) return;
+        // Prevent the page from scrolling on arrow keys etc.
+        evt.preventDefault();
+        if (!contract) { alert('Connect first.'); return; }
+        if (evt.repeat || sending) return; // ignore key auto-repeat and concurrent sends
+        try {
+          sending = true;
+          setPadDisabled(true);
+          await send(cmd, $('memo').value || '');
+        } finally {
+          sending = false;
+          setPadDisabled(false);
+        }
+      });
     })();
   </script>
 </body>
