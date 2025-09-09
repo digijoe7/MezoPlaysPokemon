@@ -1,0 +1,300 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mezo Plays Pokémon – ChainPlays UI</title>
+  <style>
+    :root { --bg:#0b0f14; --card:#121821; --text:#e6eef8; --sub:#9fb0c3; --accent:#5eead4; }
+    body { margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial; }
+    .wrap { max-width:880px; margin:40px auto; padding:24px; }
+    .card { background:var(--card); border:1px solid #1e293b; border-radius:16px; padding:20px; box-shadow:0 8px 24px rgba(0,0,0,.25); }
+    h1 { font-size:28px; margin:0 0 8px; }
+    p { color:var(--sub); margin:0 0 16px; }
+    .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+    button, input { height:44px; border-radius:10px; border:1px solid #2a3a4f; background:#0e1520; color:var(--text); padding:0 14px; font-weight:600; }
+    button { cursor:pointer; }
+    button.primary { background:linear-gradient(180deg,#1f364d,#142235); }
+    button:hover { filter:brightness(1.05); }
+    .pad { display:grid; grid-template-columns:repeat(3,100px); gap:10px; justify-content:center; margin-top:10px; }
+    .pad button { height:64px; font-size:18px; }
+    .keys { display:grid; grid-template-columns:repeat(2,100px); gap:10px; justify-content:center; margin-top:10px; }
+    .stat { font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; background:#0a111b; border:1px solid #1f2a3a; padding:10px 12px; border-radius:10px; }
+    .badge { padding:4px 10px; border-radius:999px; background:#0a1722; border:1px solid #243042; color:var(--sub); font-size:12px; }
+    .spacer { height:16px; }
+    a { color: var(--accent); text-decoration: none; }
+    .grid { display:grid; gap:12px; }
+    .two { grid-template-columns:1fr 1fr; }
+    @media (max-width:840px){ .two { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Mezo Plays Pokémon</h1>
+      <p>Send on-chain inputs to the <code>ChainPlays</code> contract deployed on Mezo Mainnet. Each press calls <code>move(cmd, memo)</code> and emits a <code>Move</code> event.</p>
+
+      <div class="row" style="margin-bottom:8px">
+        <label class="badge">Contract</label>
+        <input id="contract" value="0x7c8A35C98Bf46a67324Af3F54aD027DBE2138E98" style="min-width:320px" />
+        <label class="badge">Chain</label>
+        <select id="chain" style="height:44px;border-radius:10px;background:#0e1520;color:var(--text);border:1px solid #2a3a4f;">
+          <option value="31612" selected>Mezo Mainnet (31612)</option>
+          <option value="31611">Mezo Testnet (31611)</option>
+        </select>
+        <button id="saveCfg">Save</button>
+      </div>
+
+      <div class="row">
+        <button id="connect" class="primary">Connect Wallet</button>
+        <button id="connectQR" title="WalletConnect QR (optional)" style="display:none">Connect via QR</button>
+        <button id="disconnect" style="display:none">Disconnect</button>
+        <div id="acct" class="stat">Not connected</div>
+        <div id="net" class="badge">Network: —</div>
+        <a id="expl" class="badge" href="https://explorer.mezo.org/address/0x7c8A35C98Bf46a67324Af3F54aD027DBE2138E98" target="_blank" rel="noreferrer">Open in Explorer</a>
+      </div>
+
+      <div class="spacer"></div>
+      <div class="grid two">
+        <div>
+          <div class="pad">
+            <div></div>
+            <button data-cmd="0">↑ Up</button>
+            <div></div>
+            <button data-cmd="2">← Left</button>
+            <button data-cmd="1">↓ Down</button>
+            <button data-cmd="3">→ Right</button>
+          </div>
+          <div class="keys">
+            <button data-cmd="4">A</button>
+            <button data-cmd="5">B</button>
+            <button data-cmd="6">Start</button>
+            <button data-cmd="7">Select</button>
+          </div>
+        </div>
+        <div>
+          <div class="row">
+            <input id="memo" placeholder="Optional memo (e.g., 'Go!')" style="flex:1;min-width:260px" />
+            <button id="send" class="primary">Send Last Click</button>
+          </div>
+          <div class="spacer"></div>
+          <div class="grid">
+            <div class="stat" id="status">Status: idle</div>
+            <div class="stat" id="gas">Gas est.: —</div>
+            <div class="stat" id="last">Last tx: —</div>
+            <div class="stat" id="events">Recent events (client-side): none</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { ethers } from "https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.min.js";
+
+    // Optional WalletConnect support via Web3Modal (free).
+    // Set window.WEB3MODAL_PROJECT_ID = "<your_project_id>" before this script OR edit below.
+    const WC_PID = window.WEB3MODAL_PROJECT_ID || ""; // leave blank to disable QR option
+    let w3m, w3mProvider; // populated if WC_PID present
+
+    if (WC_PID) {
+      const w3mScript = document.createElement('script');
+      w3mScript.src = 'https://unpkg.com/@walletconnect/web3modal@2.7.2/dist/index.umd.js';
+      w3mScript.onload = () => {
+        const { Web3Modal } = window['web3modal'];
+        w3m = new Web3Modal({
+          projectId: WC_PID,
+          chains: [{ chainId: 31612, name: 'Mezo Mainnet', rpcUrl: 'https://mainnet.mezo.public.validationcloud.io' }, { chainId: 31611, name: 'Mezo Testnet', rpcUrl: 'https://rpc.test.mezo.org' }],
+          walletImages: {},
+        });
+        // show QR button
+        document.getElementById('connectQR').style.display = 'inline-block';
+      };
+      document.head.appendChild(w3mScript);
+    }
+
+    const ABI = [
+      "function move(uint8 cmd, string memo)",
+      "event Move(address indexed sender, uint8 cmd, uint256 weight, string memo)"
+    ];
+
+    const qs = (id) => document.getElementById(id);
+    const padButtons = Array.from(document.querySelectorAll('[data-cmd]'));
+
+    const contractInput = qs('contract');
+    const chainSelect   = qs('chain');
+    const connectBtn    = qs('connect');
+    const connectQRBtn  = qs('connectQR');
+    const disconnectBtn = qs('disconnect');
+    const acctEl        = qs('acct');
+    const netEl         = qs('net');
+    const explEl        = qs('expl');
+    const statusEl      = qs('status');
+    const gasEl         = qs('gas');
+    const lastEl        = qs('last');
+    const eventsEl      = qs('events');
+
+    function explorerBase() {
+      return Number(chainSelect.value) === 31611 ? 'https://explorer.test.mezo.org' : 'https://explorer.mezo.org';
+    }
+    function updateExplorerLink() {
+      const addr = contractInput.value.trim();
+      if (!addr) return;
+      explEl.href = `${explorerBase()}/address/${addr}`;
+    }
+    updateExplorerLink();
+
+    let provider, signer, contract; // ethers objects
+    let eip1193; // raw provider (injected or walletconnect)
+    let lastCmd = null;
+
+    // --- network helpers ---
+    async function ensureNetwork(chainId) {
+      if (!eip1193) return; // WC will enforce chain during connect; injected we can switch
+      try {
+        const current = await eip1193.request({ method: 'eth_chainId' });
+        if (parseInt(current, 16) !== chainId) {
+          await eip1193.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x' + chainId.toString(16) }] });
+        }
+      } catch (e) {
+        if (e.code === 4902) {
+          const params = chainId === 31611 ? {
+            chainId: '0x7B6B', chainName: 'Mezo Testnet', nativeCurrency: { name:'Bitcoin', symbol:'BTC', decimals:18 }, rpcUrls: ['https://rpc.test.mezo.org'], blockExplorerUrls: ['https://explorer.test.mezo.org']
+          } : {
+            chainId: '0x7B6C', chainName: 'Mezo Mainnet', nativeCurrency: { name:'Bitcoin', symbol:'BTC', decimals:18 }, rpcUrls: ['https://mainnet.mezo.public.validationcloud.io'], blockExplorerUrls: ['https://explorer.mezo.org']
+          };
+          await eip1193.request({ method:'wallet_addEthereumChain', params:[params] });
+          await eip1193.request({ method:'wallet_switchEthereumChain', params:[{ chainId: params.chainId }] });
+        } else {
+          throw e;
+        }
+      }
+    }
+
+    function wireProviderEvents() {
+      if (!eip1193) return;
+      eip1193.on?.('accountsChanged', (accs) => {
+        if (accs?.length) acctEl.textContent = 'Player: ' + accs[0];
+        else resetConnection();
+      });
+      eip1193.on?.('chainChanged', async () => {
+        const net = await provider.getNetwork();
+        netEl.textContent = `Network: ${net.chainId}`;
+      });
+      eip1193.on?.('disconnect', resetConnection);
+    }
+
+    function resetConnection() {
+      provider = signer = contract = undefined;
+      acctEl.textContent = 'Not connected';
+      netEl.textContent = 'Network: —';
+      statusEl.textContent = 'Status: idle';
+      disconnectBtn.style.display = 'none';
+    }
+
+    async function connectInjected() {
+      const eth = window.ethereum;
+      if (!eth) {
+        alert('No injected wallet found. Install MetaMask/OKX/Bitget, or use QR connect.');
+        return;
+      }
+      eip1193 = eth;
+      await eip1193.request({ method: 'eth_requestAccounts' });
+      await ensureNetwork(Number(chainSelect.value));
+      provider = new ethers.BrowserProvider(eip1193);
+      signer = await provider.getSigner();
+      await postConnect();
+    }
+
+    async function connectQR() {
+      if (!w3m) {
+        alert('QR option requires a free WalletConnect projectId.');
+        return;
+      }
+      const session = await w3m.openModal();
+      eip1193 = session?.getEthereumProvider?.() || session?.provider || window.ethereum; // best-effort
+      if (!eip1193) { alert('Failed to get provider'); return; }
+      provider = new ethers.BrowserProvider(eip1193);
+      signer = await provider.getSigner();
+      await postConnect();
+    }
+
+    async function postConnect() {
+      wireProviderEvents();
+      const addr = await signer.getAddress();
+      acctEl.textContent = 'Player: ' + addr;
+      const net = await provider.getNetwork();
+      netEl.textContent = `Network: ${net.chainId}`;
+      const caddr = contractInput.value.trim();
+      if (!caddr) { alert('Enter your deployed contract address, then click Save.'); return; }
+      contract = new ethers.Contract(caddr, ABI, signer);
+      statusEl.textContent = 'Status: connected';
+      updateExplorerLink();
+      try {
+        contract.on('Move', (sender, cmd, weight, memo, ev) => {
+          appendEvent({ sender, cmd: Number(cmd), memo, txHash: ev.log.transactionHash });
+        });
+      } catch {}
+      disconnectBtn.style.display = 'inline-block';
+    }
+
+    connectBtn.onclick = connectInjected;
+    connectQRBtn.onclick = connectQR;
+    disconnectBtn.onclick = async () => {
+      // For WalletConnect, try closing modal/session if available
+      try { await w3m?.disconnect?.(); } catch {}
+      resetConnection();
+    };
+
+    function appendEvent(e) {
+      const now = new Date().toLocaleTimeString();
+      const line = `[${now}] ${e.sender} → cmd=${e.cmd} memo="${e.memo}" tx=${e.txHash?.slice(0,10) || '—'}`;
+      const prev = eventsEl.textContent;
+      eventsEl.textContent = prev === 'Recent events (client-side): none' ? line : prev + "
+" + line;
+    }
+
+    padButtons.forEach(btn => {
+      btn.addEventListener('click', async () => {
+        lastCmd = Number(btn.dataset.cmd);
+        statusEl.textContent = `Selected command: ${lastCmd}`;
+        await estimate();
+      });
+    });
+
+    qs('send').onclick = async () => {
+      if (lastCmd === null) { alert('Press a command button first.'); return; }
+      await send(lastCmd, qs('memo').value || '');
+    };
+
+    async function estimate() {
+      try {
+        if (!contract) return;
+        const memo = qs('memo').value || '';
+        const gas = await contract.move.estimateGas(lastCmd, memo);
+        const fees = await provider.getFeeData();
+        const price = fees.gasPrice || fees.maxFeePerGas || 0n;
+        const cost = gas * price;
+        gasEl.textContent = `Gas est.: ~${gas} @ ${ethers.formatUnits(price, 9)} gwei → cost ≈ ${ethers.formatUnits(cost, 18)} BTC`;
+      } catch (err) {
+        gasEl.textContent = 'Gas est.: (failed to estimate — will send anyway)';
+      }
+    }
+
+    async function send(cmd, memo) {
+      if (!contract) { alert('Connect first.'); return; }
+      try {
+        statusEl.textContent = 'Sending…';
+        const tx = await contract.move(cmd, memo, { gasLimit: 300000 });
+        lastEl.textContent = 'Last tx: ' + tx.hash;
+        statusEl.textContent = 'Mining…';
+        const rc = await tx.wait();
+        statusEl.textContent = 'Mined in block ' + rc.blockNumber;
+      } catch (e) {
+        console.error(e);
+        statusEl.textContent = 'Error: ' + (e?.shortMessage || e?.message || e);
+      }
+    }
+  </script>
+</body>
+</html>
