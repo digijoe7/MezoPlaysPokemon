@@ -87,120 +87,161 @@
     </div>
   </div>
 
-  <script type="module">
-    import { ethers } from "https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.min.js";
+  <!-- Ethers v5 (UMD) for injected wallets like MetaMask/Rabby) -->
+  <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
 
-    // WalletConnect setup
-    const PROJECT_ID = "3311ad6ffe4bfc131560ea8a4fdc0f4b"; // replace with your WalletConnect Cloud project ID
-    const { Web3Modal } = await import('https://unpkg.com/@web3modal/ethers5@2.7.2/dist/index.js');
+  <script>
+    (function(){
+      const ethers = window.ethers; // v5 UMD
 
-    const web3modal = new Web3Modal({
-      projectId: PROJECT_ID,
-      walletConnectVersion: 2,
-      chains: [
-        {
-          chainId: 31612,
-          name: 'Mezo Mainnet',
-          currency: 'BTC',
-          explorerUrl: 'https://explorer.mezo.org',
-          rpcUrl: 'https://mainnet.mezo.public.validationcloud.io'
-        },
-        {
-          chainId: 31611,
-          name: 'Mezo Testnet',
-          currency: 'BTC',
-          explorerUrl: 'https://explorer.test.mezo.org',
-          rpcUrl: 'https://rpc.test.mezo.org'
-        }
-      ]
-    });
+      // === Mezo chain config ===
+      const MEZO_MAINNET = 31612;
+      const MEZO_PARAMS = {
+        chainId: '0x7B6C',
+        chainName: 'Mezo Mainnet',
+        nativeCurrency: { name: 'Bitcoin', symbol: 'BTC', decimals: 18 },
+        rpcUrls: ['https://mainnet.mezo.public.validationcloud.io'],
+        blockExplorerUrls: ['https://explorer.mezo.org']
+      };
 
-    const ABI = [
-      "function move(uint8 cmd, string memo)",
-      "event Move(address indexed sender, uint8 cmd, uint256 weight, string memo)"
-    ];
+      // === ABI ===
+      const ABI = [
+        'function move(uint8 cmd, string memo)',
+        'event Move(address indexed sender, uint8 cmd, uint256 weight, string memo)'
+      ];
 
-    const qs = (id) => document.getElementById(id);
-    const padButtons = Array.from(document.querySelectorAll('[data-cmd]'));
-    const connectBtn = qs('connect');
-    const acctEl = qs('acct');
-    const netEl = qs('net');
-    const statusEl = qs('status');
-    const gasEl = qs('gas');
-    const lastEl = qs('last');
-    const eventsEl = qs('events');
-    const contractInput = qs('contract');
+      // === DOM ===
+      const $ = (id) => document.getElementById(id);
+      const connectBtn   = $('connect');
+      const padButtons   = Array.from(document.querySelectorAll('[data-cmd]'));
+      const acctEl       = $('acct');
+      const netEl        = $('net');
+      const statusEl     = $('status');
+      const gasEl        = $('gas');
+      const lastEl       = $('last');
+      const eventsEl     = $('events');
+      const contractInput= $('contract');
+      const chainSelect  = $('chain');
 
-    let provider, signer, contract;
+      let provider, signer, contract, lastCmd = null;
 
-    connectBtn.onclick = async () => {
-      try {
-        const conn = await web3modal.connect();
-        provider = new ethers.BrowserProvider(conn); 
-        signer = await provider.getSigner();
-        acctEl.textContent = 'Player: ' + await signer.getAddress();
-        const net = await provider.getNetwork();
-        netEl.textContent = 'Network: ' + net.chainId;
+      function say(msg){ statusEl.textContent = msg; }
+
+      function explorerBase(){
+        return Number(chainSelect.value) === MEZO_MAINNET ? 'https://explorer.mezo.org' : 'https://explorer.test.mezo.org';
+      }
+      function updateExplorerLink(){
         const addr = contractInput.value.trim();
-        contract = new ethers.Contract(addr, ABI, signer);
-        statusEl.textContent = 'Status: connected';
-        contract.on('Move', (sender, cmd, weight, memo, ev) => {
-          appendEvent({ sender, cmd: Number(cmd), memo, txHash: ev.log.transactionHash });
-        });
-      } catch (err) {
-        statusEl.textContent = 'Connect error: ' + (err.message || err);
+        if (!addr) return;
+        $('expl').href = `${explorerBase()}/address/${addr}`;
       }
-    };
+      updateExplorerLink();
 
-    function appendEvent(e) {
-      const now = new Date().toLocaleTimeString();
-      const line = `[${now}] ${e.sender} → cmd=${e.cmd} memo="${e.memo}" tx=${e.txHash?.slice(0,10) || '—'}`;
-      const prev = eventsEl.textContent;
-      eventsEl.textContent = prev === 'Recent events (client-side): none' ? line : prev + "\n" + line;
-    }
+      async function ensureInjected(){
+        if (!window.ethereum){
+          say('No injected wallet found. Install MetaMask/Rabby/OKX or open in the wallet\'s in-app browser.');
+          throw new Error('no-injected-wallet');
+        }
+        if (!provider) provider = new ethers.providers.Web3Provider(window.ethereum);
+        const accs = await provider.listAccounts();
+        if (accs.length === 0) await provider.send('eth_requestAccounts', []);
+        signer = provider.getSigner();
+        const addr = await signer.getAddress();
+        const net  = await provider.getNetwork();
+        acctEl.textContent = `Player: ${addr}`;
+        netEl.textContent  = `Network: ${net.chainId}`;
+        // ensure Mezo (31612)
+        if (net.chainId !== MEZO_MAINNET){
+          try {
+            await window.ethereum.request({ method:'wallet_switchEthereumChain', params:[{ chainId: MEZO_PARAMS.chainId }] });
+          } catch (e){
+            if (e.code === 4902 || String(e.message).includes('Unrecognized chain')){
+              await window.ethereum.request({ method:'wallet_addEthereumChain', params:[MEZO_PARAMS] });
+            } else {
+              throw e;
+            }
+          }
+          // refresh provider network state
+          provider = new ethers.providers.Web3Provider(window.ethereum);
+          signer = provider.getSigner();
+          const net2 = await provider.getNetwork();
+          netEl.textContent = `Network: ${net2.chainId}`;
+        }
+        return { addr: await signer.getAddress() };
+      }
 
-    let lastCmd = null;
-    padButtons.forEach(btn => {
-      btn.addEventListener('click', async () => {
+      function getContract(){
+        const addr = contractInput.value.trim();
+        if (!addr) throw new Error('Missing contract address');
+        return new ethers.Contract(addr, ABI, signer || provider);
+      }
+
+      async function onConnect(){
+        try {
+          say('Connecting…');
+          await ensureInjected();
+          contract = getContract().connect(signer);
+          say('Status: connected');
+          // stream events from this session
+          try {
+            contract.on('Move', (sender, cmd, weight, memo, ev) => {
+              appendEvent({ sender, cmd: Number(cmd), memo, txHash: ev.transactionHash });
+            });
+          } catch {}
+        } catch (err){
+          console.error(err);
+          say('Connect error: ' + (err?.message || err));
+        }
+      }
+
+      function appendEvent(e){
+        const now = new Date().toLocaleTimeString();
+        const line = `[${now}] ${e.sender} → cmd=${e.cmd} memo="${e.memo}" tx=${(e.txHash||'').slice(0,10)||'—'}`;
+        const prev = eventsEl.textContent;
+        eventsEl.textContent = prev === 'Recent events (client-side): none' ? line : prev + "\n" + line;
+      }
+
+      async function estimate(){
+        try {
+          if (!contract) return;
+          const memo = $('memo').value || '';
+          const gas  = await contract.estimateGas.move(lastCmd, memo);
+          const fee  = await provider.getFeeData();
+          const price= fee.gasPrice || fee.maxFeePerGas || ethers.BigNumber.from(0);
+          const cost = gas.mul(price);
+          gasEl.textContent = `Gas est.: ~${gas.toString()} @ ${ethers.utils.formatUnits(price, 9)} gwei → cost ≈ ${ethers.utils.formatUnits(cost, 18)} BTC`;
+        } catch {
+          gasEl.textContent = 'Gas est.: (failed to estimate — will send anyway)';
+        }
+      }
+
+      async function send(cmd, memo){
+        if (!contract){ alert('Connect first.'); return; }
+        try {
+          say('Sending…');
+          const tx = await contract.move(cmd, memo, { gasLimit: 300000 });
+          lastEl.textContent = 'Last tx: ' + tx.hash;
+          say('Mining…');
+          const rc = await tx.wait();
+          say('Mined in block ' + rc.blockNumber);
+        } catch (e){
+          console.error(e);
+          say('Error: ' + (e?.error?.message || e?.data?.message || e?.message || e));
+        }
+      }
+
+      // UI wiring
+      connectBtn.onclick = onConnect;
+      padButtons.forEach(btn => btn.addEventListener('click', async () => {
         lastCmd = Number(btn.dataset.cmd);
-        statusEl.textContent = `Selected command: ${lastCmd}`;
+        say(`Selected command: ${lastCmd}`);
         await estimate();
-      });
-    });
-
-    qs('send').onclick = async () => {
-      if (lastCmd === null) { alert('Press a command button first.'); return; }
-      await send(lastCmd, qs('memo').value || '');
-    };
-
-    async function estimate() {
-      try {
-        if (!contract) return;
-        const memo = qs('memo').value || '';
-        const gas = await contract.move.estimateGas(lastCmd, memo);
-        const fees = await provider.getFeeData();
-        const price = fees.gasPrice || fees.maxFeePerGas || 0n;
-        const cost = gas * price;
-        gasEl.textContent = `Gas est.: ~${gas} @ ${ethers.formatUnits(price, 9)} gwei → cost ≈ ${ethers.formatUnits(cost, 18)} BTC`;
-      } catch (err) {
-        gasEl.textContent = 'Gas est.: (failed to estimate — will send anyway)';
-      }
-    }
-
-    async function send(cmd, memo) {
-      if (!contract) { alert('Connect first.'); return; }
-      try {
-        statusEl.textContent = 'Sending…';
-        const tx = await contract.move(cmd, memo, { gasLimit: 300000 });
-        lastEl.textContent = 'Last tx: ' + tx.hash;
-        statusEl.textContent = 'Mining…';
-        const rc = await tx.wait();
-        statusEl.textContent = 'Mined in block ' + rc.blockNumber;
-      } catch (e) {
-        console.error(e);
-        statusEl.textContent = 'Error: ' + (e?.shortMessage || e?.message || e);
-      }
-    }
+      }));
+      $('send').onclick = async () => {
+        if (lastCmd === null){ alert('Press a command button first.'); return; }
+        await send(lastCmd, $('memo').value || '');
+      };
+    })();
   </script>
 </body>
 </html>
