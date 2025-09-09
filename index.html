@@ -68,6 +68,26 @@
         <button id="saveCfg">Save</button>
       </div>
 
+      <!-- Smart Wallet Panel (simplified) -->
+      <div class="row" id="walletPanel1" style="margin-bottom:8px">
+        <label class="badge">Owner</label>
+        <div id="ownerAddr" class="stat" style="min-width:300px">—</div>
+        <label class="badge">Owner Balance</label>
+        <div id="ownerBal" class="stat">—</div>
+      </div>
+      <div class="row" id="walletPanel2" style="margin-bottom:8px">
+        <label class="badge">Smart Wallet</label>
+        <input id="walletAddr" readonly style="min-width:340px" placeholder="(not created)" />
+        <button id="btnCreateWallet" class="primary">Create My Wallet</button>
+      </div>
+      <div class="row" id="walletPanel3" style="margin-bottom:8px; display:none;">
+        <label class="badge">Wallet Balance</label>
+        <div id="walletBal" class="stat">—</div>
+        <input id="fundAmt" placeholder="Amount (BTC)" style="width:180px" />
+        <button id="btnFund" class="primary">Fund</button>
+        <button id="btnRefresh" class="secondary">Refresh</button>
+      </div>
+
       <div class="row">
         <button id="connect" class="primary">Connect Wallet</button>
         <div id="acct" class="stat">Not connected</div>
@@ -133,6 +153,31 @@
         'event Move(address indexed sender, uint8 cmd, uint256 weight, string memo)'
       ];
 
+      // GasTankWallet ABI (subset)
+      const WABI = [
+        'function deposit() payable',
+        'function withdraw(uint256 amount, address payable to)',
+        'function setRelayer(address r)',
+        'function relayer() view returns (address)',
+        'function owner() view returns (address)',
+        'function relayMove(uint8 cmd, string memo)',
+        'function sessionKey() view returns (address)',
+        'function sessionKeyExpiry() view returns (uint64)'
+      ];
+
+      // === GasTankFactory config ===
+      // Set this to your deployed factory on Mezo Mainnet for a seamless 1-click experience.
+      // When non-empty, the UI hides the manual Factory field and uses this address automatically.
+      const FACTORY_ADDR_MAINNET = "0x72EC50a581AF9A5e656Aa4FA1785AfF6444892C6"; // TODO: paste your deployed factory address here
+
+      // GasTankFactory ABI (supports registry + payable create)
+      const FABI = [
+        'function walletOf(address owner) view returns (address)',
+        'function create(address owner, address chainPlays) payable returns (address)',
+        'function createAndDeposit(address owner, address chainPlays) payable returns (address)',
+        'event WalletCreated(address indexed wallet, address indexed owner, uint256 initialDeposit)'
+      ];
+
       // === DOM ===
       const $ = (id) => document.getElementById(id);
       const connectBtn   = $('connect');
@@ -146,7 +191,20 @@
       const contractInput= $('contract');
       const chainSelect  = $('chain');
 
+      // smart wallet DOM (simplified)
+      const ownerAddrEl     = document.getElementById('ownerAddr');
+      const ownerBalEl      = document.getElementById('ownerBal');
+      const walletAddrEl    = document.getElementById('walletAddr');
+      const btnCreateWallet = document.getElementById('btnCreateWallet');
+      const walletBalEl     = document.getElementById('walletBal');
+      const fundAmtEl       = document.getElementById('fundAmt');
+      const btnFund         = document.getElementById('btnFund');
+      const btnRefresh      = document.getElementById('btnRefresh');
+
+      // if factory constant is set and we're on Mezo Mainnet, hide manual field
+
       let provider, signer, contract, lastCmd = null, sending = false;
+      let walletContract = null; // GasTankWallet instance
 
       function say(msg){ statusEl.textContent = msg; }
 
@@ -199,18 +257,50 @@
         return new ethers.Contract(addr, ABI, signer || provider);
       }
 
+      function getWallet(){
+        const waddr = walletAddrEl?.value?.trim();
+        if (!waddr) throw new Error('Missing smart wallet address');
+        return new ethers.Contract(waddr, WABI, signer || provider);
+      }
+
       async function onConnect(){
         try {
           say('Connecting…');
-          await ensureInjected();
+          const { addr } = await ensureInjected();
           contract = getContract().connect(signer);
-          say('Status: connected');
-          // stream events from this session
+          acctEl.textContent = `Player: ${addr}`;
+          ownerAddrEl.textContent = addr;
+
+          // show network id
+          const net = await provider.getNetwork();
+          netEl.textContent = `Network: ${net.chainId}`;
+
+          // auto-detect wallet via factory
+          try {
+            const fab = new ethers.Contract(FACTORY_ADDR_MAINNET, FABI, signer);
+            const existing = await fab.walletOf(addr);
+            if (existing && existing !== '0x0000000000000000000000000000000000000000') {
+              walletAddrEl.value = existing;
+              walletContract = new ethers.Contract(existing, WABI, signer);
+              document.getElementById('walletPanel3').style.display = 'flex';
+              btnCreateWallet.style.display = 'none';
+            } else {
+              walletAddrEl.value = '';
+              document.getElementById('walletPanel3').style.display = 'none';
+              btnCreateWallet.style.display = 'inline-block';
+            }
+          } catch {}
+
+          // events stream (best-effort)
           try {
             contract.on('Move', (sender, cmd, weight, memo, ev) => {
               appendEvent({ sender, cmd: Number(cmd), memo, txHash: ev.transactionHash });
             });
           } catch {}
+
+          await refreshOwnerBalance();
+          await refreshWalletBalance();
+          say('Status: connected');
         } catch (err){
           console.error(err);
           say('Connect error: ' + (err?.message || err));
@@ -239,12 +329,26 @@
       }
 
       async function send(cmd, memo){
-        if (!contract){ alert('Connect first.'); return; }
+        if (walletAddrEl.value) {
+          // Prefer smart wallet if present
+          try{
+            if (!walletContract) walletContract = new ethers.Contract(walletAddrEl.value, WABI, signer);
+            say('Sending via smart wallet…');
+            const tx = await walletContract.relayMove(cmd, memo, { gasLimit: 500000 });
+            lastEl.textContent = 'Last tx: ' + tx.hash;
+            const rc = await tx.wait();
+            say('Smart wallet relayed in block ' + rc.blockNumber);
+          } catch(e){
+            console.error(e);
+            say('Smart wallet error: ' + (e?.message || e));
+          }
+          return;
+        }
+        // Fallback to direct call
         try {
           say('Sending…');
           const tx = await contract.move(cmd, memo, { gasLimit: 300000 });
           lastEl.textContent = 'Last tx: ' + tx.hash;
-          say('Mining…');
           const rc = await tx.wait();
           say('Mined in block ' + rc.blockNumber);
         } catch (e){
@@ -288,6 +392,61 @@
         if (lastCmd === null){ alert('Press a command button first.'); return; }
         await send(lastCmd, $('memo').value || '');
       };
+
+      // Balances + wallet actions (simple)
+      async function refreshOwnerBalance(){
+        try{
+          const bal = await provider.getBalance(await signer.getAddress());
+          ownerBalEl.textContent = ethers.utils.formatUnits(bal, 18) + ' BTC';
+        } catch {}
+      }
+      async function refreshWalletBalance(){
+        try{
+          const waddr = walletAddrEl.value.trim();
+          if (!waddr) { walletBalEl.textContent = '—'; return; }
+          const bal = await provider.getBalance(waddr);
+          walletBalEl.textContent = ethers.utils.formatUnits(bal, 18) + ' BTC';
+        } catch { walletBalEl.textContent = '—'; }
+      }
+
+      btnCreateWallet?.addEventListener('click', async () => {
+        try {
+          await ensureInjected();
+          const owner = await signer.getAddress();
+          const cp    = contractInput.value.trim();
+          const fab   = new ethers.Contract(FACTORY_ADDR_MAINNET, FABI, signer);
+          say('Creating wallet…');
+          const tx = await fab.create(owner, cp);
+          const rc = await tx.wait();
+          let wallet;
+          try { const ev = rc.events?.find(e=>e.event==='WalletCreated'); if (ev?.args?.wallet) wallet = ev.args.wallet; } catch {}
+          if (!wallet) wallet = await fab.walletOf(owner);
+          walletAddrEl.value = wallet;
+          walletContract = new ethers.Contract(wallet, WABI, signer);
+          document.getElementById('walletPanel3').style.display = 'flex';
+          btnCreateWallet.style.display = 'none';
+          say('Wallet ready: ' + wallet);
+          await refreshWalletBalance();
+        } catch(e){ say('Create failed: ' + (e?.message || e)); }
+      });
+
+      btnFund?.addEventListener('click', async () => {
+        try {
+          if (!walletAddrEl.value) return alert('Create a wallet first');
+          const amt = fundAmtEl.value.trim(); if (!amt) return alert('Enter amount');
+          const w = new ethers.Contract(walletAddrEl.value, WABI, signer);
+          say('Funding wallet…');
+          const tx = await w.deposit({ value: ethers.utils.parseUnits(amt, 18) });
+          await tx.wait();
+          await refreshWalletBalance();
+          say('Funded');
+        } catch(e){ say('Fund failed: ' + (e?.message || e)); }
+      });
+
+      btnRefresh?.addEventListener('click', async () => {
+        await refreshOwnerBalance();
+        await refreshWalletBalance();
+      });
 
       // --- Keyboard controls ---
       function keyToCmd(evt){
