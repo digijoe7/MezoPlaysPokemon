@@ -131,7 +131,43 @@
   </div>
 
   <!-- Ethers v5 (UMD) for injected wallets like MetaMask/Rabby) -->
-  <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js">  
+  // --- Mezo Mainnet connect helper (forces 31612) ---
+  async function ensureInjectedMezo(){
+    const eth = window.ethereum;
+    if (!eth) { alert('No injected wallet found. Install MetaMask/Rabby.'); throw new Error('no-wallet'); }
+    eip1193 = eth;
+    await eth.request({ method: 'eth_requestAccounts' });
+
+    const desired = 31612; // Mezo Mainnet
+    const toHex = (n) => '0x' + n.toString(16);
+    try {
+      const currentHex = await eth.request({ method: 'eth_chainId' });
+      const current = parseInt(currentHex, 16);
+      if (current !== desired) {
+        try {
+          await eth.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: toHex(desired) }] });
+        } catch (e) {
+          if (e.code === 4902 || e?.data?.originalError?.code === 4902) {
+            await eth.request({ method: 'wallet_addEthereumChain', params: [{
+              chainId: '0x7B6C', // 31612
+              chainName: 'Mezo Mainnet',
+              nativeCurrency: { name: 'Bitcoin', symbol: 'BTC', decimals: 18 },
+              rpcUrls: ['https://mainnet.mezo.public.validationcloud.io'],
+              blockExplorerUrls: ['https://explorer.mezo.org']
+            }]});
+            await eth.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x7B6C' }] });
+          } else { throw e; }
+        }
+      }
+    } catch (e) { console.error('chain switch/add failed', e); throw e; }
+
+    // Ethers v6 provider
+    provider = new ethers.BrowserProvider(eip1193);
+    signer = await provider.getSigner();
+    return { addr: await signer.getAddress() };
+  }
+</script>
 
   <script>
     (function(){
@@ -218,7 +254,7 @@
       }
       updateExplorerLink();
 
-      async function ensureInjected(){
+      async function ensureInjectedMezo(){
         if (!window.ethereum){
           say('No injected wallet found. Install MetaMask/Rabby/OKX or open in the wallet\'s in-app browser.');
           throw new Error('no-injected-wallet');
@@ -266,7 +302,7 @@
       async function onConnect(){
         try {
           say('Connecting…');
-          const { addr } = await ensureInjected();
+          const { addr } = await ensureInjectedMezo();
           contract = getContract().connect(signer);
           acctEl.textContent = `Player: ${addr}`;
           ownerAddrEl.textContent = addr;
@@ -411,7 +447,7 @@
 
       btnCreateWallet?.addEventListener('click', async () => {
         try {
-          await ensureInjected();
+          await ensureInjectedMezo();
           const owner = await signer.getAddress();
           const cp    = contractInput.value.trim();
           const fab   = new ethers.Contract(FACTORY_ADDR_MAINNET, FABI, signer);
