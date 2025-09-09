@@ -1,4 +1,36 @@
-<!doctype html>
+let WC_PID = window.WEB3MODAL_PROJECT_ID || localStorage.getItem('wcpid') || ""; // blank => we'll prompt on connect
+    let w3m, w3mProvider; // populated if WC_PID present
+
+    function loadWeb3Modal() {
+      return new Promise((resolve) => {
+        if (window.web3modal) return resolve();
+        const w3mScript = document.createElement('script');
+        w3mScript.src = 'https://unpkg.com/@walletconnect/web3modal@2.7.2/dist/index.umd.js';
+        w3mScript.onload = () => resolve();
+        document.head.appendChild(w3mScript);
+      });
+    }
+
+    async function ensureWeb3Modal() {
+      if (!WC_PID) {
+        WC_PID = prompt('Enter your WalletConnect Project ID to open the QR modal:') || '';
+        if (!WC_PID) throw new Error('WalletConnect Project ID required');
+        localStorage.setItem('wcpid', WC_PID);
+      }
+      await loadWeb3Modal();
+      const { Web3Modal } = window['web3modal'];
+      if (!w3m) {
+        w3m = new Web3Modal({
+          projectId: WC_PID,
+          chains: [
+            { chainId: 31612, name: 'Mezo Mainnet', rpcUrl: 'https://mainnet.mezo.public.validationcloud.io' },
+            { chainId: 31611, name: 'Mezo Testnet', rpcUrl: 'https://rpc.test.mezo.org' }
+          ],
+        });
+        document.getElementById('connectQR').style.display = 'inline-block';
+      }
+      return w3m;
+    }<!doctype html>
 <html>
 <head>
   <meta charset="utf-8" />
@@ -243,10 +275,20 @@
     }
 
     async function connectQR() {
-      if (!w3m) {
-        alert('QR option requires a free WalletConnect projectId.');
-        return;
+      try {
+        await ensureWeb3Modal();
+        const session = await w3m.openModal();
+        // Try to obtain an EIP-1193 provider from the modal
+        eip1193 = session?.getEthereumProvider?.() || session?.provider || window.ethereum;
+        if (!eip1193) throw new Error('No provider returned by WalletConnect');
+        provider = new ethers.BrowserProvider(eip1193);
+        signer = await provider.getSigner();
+        await ensureNetwork(Number(chainSelect.value));
+        await postConnect();
+      } catch (err) {
+        statusEl.textContent = 'WalletConnect error: ' + (err?.message || err);
       }
+    }
       const session = await w3m.openModal();
       eip1193 = session?.getEthereumProvider?.() || session?.provider || window.ethereum; // best-effort
       if (!eip1193) { alert('Failed to get provider'); return; }
@@ -274,7 +316,7 @@
       disconnectBtn.style.display = 'inline-block';
     }
 
-    connectBtn.onclick = connectInjected;
+    connectBtn.onclick = connectQR;
     connectQRBtn.onclick = connectQR;
     disconnectBtn.onclick = async () => { try { await w3m?.disconnect?.(); } catch {} resetConnection(); };
     addMezoBtn.onclick = async () => {
