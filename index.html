@@ -1,36 +1,4 @@
-let WC_PID = window.WEB3MODAL_PROJECT_ID || localStorage.getItem('wcpid') || ""; // blank => we'll prompt on connect
-    let w3m, w3mProvider; // populated if WC_PID present
-
-    function loadWeb3Modal() {
-      return new Promise((resolve) => {
-        if (window.web3modal) return resolve();
-        const w3mScript = document.createElement('script');
-        w3mScript.src = 'https://unpkg.com/@walletconnect/web3modal@2.7.2/dist/index.umd.js';
-        w3mScript.onload = () => resolve();
-        document.head.appendChild(w3mScript);
-      });
-    }
-
-    async function ensureWeb3Modal() {
-      if (!WC_PID) {
-        WC_PID = prompt('Enter your WalletConnect Project ID to open the QR modal:') || '';
-        if (!WC_PID) throw new Error('WalletConnect Project ID required');
-        localStorage.setItem('wcpid', WC_PID);
-      }
-      await loadWeb3Modal();
-      const { Web3Modal } = window['web3modal'];
-      if (!w3m) {
-        w3m = new Web3Modal({
-          projectId: WC_PID,
-          chains: [
-            { chainId: 31612, name: 'Mezo Mainnet', rpcUrl: 'https://mainnet.mezo.public.validationcloud.io' },
-            { chainId: 31611, name: 'Mezo Testnet', rpcUrl: 'https://rpc.test.mezo.org' }
-          ],
-        });
-        document.getElementById('connectQR').style.display = 'inline-block';
-      }
-      return w3m;
-    }<!doctype html>
+<!doctype html>
 <html>
 <head>
   <meta charset="utf-8" />
@@ -51,7 +19,7 @@ let WC_PID = window.WEB3MODAL_PROJECT_ID || localStorage.getItem('wcpid') || "";
     .pad { display:grid; grid-template-columns:repeat(3,100px); gap:10px; justify-content:center; margin-top:10px; }
     .pad button { height:64px; font-size:18px; }
     .keys { display:grid; grid-template-columns:repeat(2,100px); gap:10px; justify-content:center; margin-top:10px; }
-    .stat { font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; background:#0a111b; border:1px solid #1f2a3a; padding:10px 12px; border-radius:10px; }
+    .stat { font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; background:#0a111b; border:1px solid #1f2a3a; padding:10px 12px; border-radius:10px; white-space:pre-line; }
     .badge { padding:4px 10px; border-radius:999px; background:#0a1722; border:1px solid #243042; color:var(--sub); font-size:12px; }
     .spacer { height:16px; }
     a { color: var(--accent); text-decoration: none; }
@@ -79,10 +47,6 @@ let WC_PID = window.WEB3MODAL_PROJECT_ID || localStorage.getItem('wcpid') || "";
 
       <div class="row">
         <button id="connect" class="primary">Connect Wallet</button>
-        <button id="connectQR" title="WalletConnect QR (optional)" style="display:none">Connect via QR</button>
-        <button id="disconnect" style="display:none">Disconnect</button>
-        <button id="addMezo" title="Force add Mezo network">Add Mezo Network</button>
-        <button id="switchMezo" title="Force switch to Mezo">Switch to Mezo</button>
         <div id="acct" class="stat">Not connected</div>
         <div id="net" class="badge">Network: —</div>
         <a id="expl" class="badge" href="https://explorer.mezo.org/address/0x7c8A35C98Bf46a67324Af3F54aD027DBE2138E98" target="_blank" rel="noreferrer">Open in Explorer</a>
@@ -126,26 +90,30 @@ let WC_PID = window.WEB3MODAL_PROJECT_ID || localStorage.getItem('wcpid') || "";
   <script type="module">
     import { ethers } from "https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.min.js";
 
-    // Optional WalletConnect support via Web3Modal (free).
-    // Set window.WEB3MODAL_PROJECT_ID = "<your_project_id>" before this script OR edit below.
-    const WC_PID = window.WEB3MODAL_PROJECT_ID || ""; // leave blank to disable QR option
-    let w3m, w3mProvider; // populated if WC_PID present
+    // WalletConnect setup
+    const PROJECT_ID = "3311ad6ffe4bfc131560ea8a4fdc0f4b"; // replace with your WalletConnect Cloud project ID
+    const { Web3Modal } = await import('https://unpkg.com/@web3modal/ethers5@2.7.2/dist/index.js');
 
-    if (WC_PID) {
-      const w3mScript = document.createElement('script');
-      w3mScript.src = 'https://unpkg.com/@walletconnect/web3modal@2.7.2/dist/index.umd.js';
-      w3mScript.onload = () => {
-        const { Web3Modal } = window['web3modal'];
-        w3m = new Web3Modal({
-          projectId: WC_PID,
-          chains: [{ chainId: 31612, name: 'Mezo Mainnet', rpcUrl: 'https://mainnet.mezo.public.validationcloud.io' }, { chainId: 31611, name: 'Mezo Testnet', rpcUrl: 'https://rpc.test.mezo.org' }],
-          walletImages: {},
-        });
-        // show QR button
-        document.getElementById('connectQR').style.display = 'inline-block';
-      };
-      document.head.appendChild(w3mScript);
-    }
+    const web3modal = new Web3Modal({
+      projectId: PROJECT_ID,
+      walletConnectVersion: 2,
+      chains: [
+        {
+          chainId: 31612,
+          name: 'Mezo Mainnet',
+          currency: 'BTC',
+          explorerUrl: 'https://explorer.mezo.org',
+          rpcUrl: 'https://mainnet.mezo.public.validationcloud.io'
+        },
+        {
+          chainId: 31611,
+          name: 'Mezo Testnet',
+          currency: 'BTC',
+          explorerUrl: 'https://explorer.test.mezo.org',
+          rpcUrl: 'https://rpc.test.mezo.org'
+        }
+      ]
+    });
 
     const ABI = [
       "function move(uint8 cmd, string memo)",
@@ -154,196 +122,44 @@ let WC_PID = window.WEB3MODAL_PROJECT_ID || localStorage.getItem('wcpid') || "";
 
     const qs = (id) => document.getElementById(id);
     const padButtons = Array.from(document.querySelectorAll('[data-cmd]'));
-
+    const connectBtn = qs('connect');
+    const acctEl = qs('acct');
+    const netEl = qs('net');
+    const statusEl = qs('status');
+    const gasEl = qs('gas');
+    const lastEl = qs('last');
+    const eventsEl = qs('events');
     const contractInput = qs('contract');
-    const chainSelect   = qs('chain');
-    const connectBtn    = qs('connect');
-    const connectQRBtn  = qs('connectQR');
-    const disconnectBtn = qs('disconnect');
-    const addMezoBtn    = qs('addMezo');
-    const switchMezoBtn = qs('switchMezo');
-    const acctEl        = qs('acct');
-    const netEl         = qs('net');
-    const explEl        = qs('expl');
-    const statusEl      = qs('status');
-    const gasEl         = qs('gas');
-    const lastEl        = qs('last');
-    const eventsEl      = qs('events');
 
-    function explorerBase() {
-      return Number(chainSelect.value) === 31611 ? 'https://explorer.test.mezo.org' : 'https://explorer.mezo.org';
-    }
-    function updateExplorerLink() {
-      const addr = contractInput.value.trim();
-      if (!addr) return;
-      explEl.href = `${explorerBase()}/address/${addr}`;
-    }
-    updateExplorerLink();
+    let provider, signer, contract;
 
-    let provider, signer, contract; // ethers objects
-    let eip1193; // raw provider (injected or walletconnect)
-    let lastCmd = null;
-
-    // --- network helpers ---
-    async function ensureNetwork(chainId) {
-      if (!eip1193) return;
+    connectBtn.onclick = async () => {
       try {
-        const current = await eip1193.request({ method: 'eth_chainId' });
-        if (parseInt(current, 16) === chainId) return;
-        await eip1193.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x' + chainId.toString(16) }] });
-      } catch (e) {
-        if (e.code === 4902 || (''+e.message).includes('Unrecognized chain')) {
-          await addMezo(chainId);
-          return;
-        }
-        throw e;
-      }
-    }
-
-    async function addMezo(chainId) {
-      const params = chainId === 31611 ? {
-        chainId: '0x7B6B', chainName: 'Mezo Testnet', nativeCurrency: { name:'Bitcoin', symbol:'BTC', decimals:18 }, rpcUrls: ['https://rpc.test.mezo.org'], blockExplorerUrls: ['https://explorer.test.mezo.org']
-      } : {
-        chainId: '0x7B6C', chainName: 'Mezo Mainnet', nativeCurrency: { name:'Bitcoin', symbol:'BTC', decimals:18 }, rpcUrls: ['https://mainnet.mezo.public.validationcloud.io'], blockExplorerUrls: ['https://explorer.mezo.org']
-      };
-      await eip1193.request({ method:'wallet_addEthereumChain', params:[params] });
-    }
-
-    function wireProviderEvents() {
-      if (!eip1193) return;
-      eip1193.on?.('accountsChanged', (accs) => {
-        if (accs?.length) acctEl.textContent = 'Player: ' + accs[0];
-        else resetConnection();
-      });
-      eip1193.on?.('chainChanged', async () => {
+        const conn = await web3modal.connect();
+        provider = new ethers.BrowserProvider(conn); 
+        signer = await provider.getSigner();
+        acctEl.textContent = 'Player: ' + await signer.getAddress();
         const net = await provider.getNetwork();
-        netEl.textContent = `Network: ${net.chainId}`;
-      });
-      eip1193.on?.('disconnect', resetConnection);
-    }
-
-    function resetConnection() {
-      provider = signer = contract = undefined;
-      acctEl.textContent = 'Not connected';
-      netEl.textContent = 'Network: —';
-      statusEl.textContent = 'Status: idle';
-      disconnectBtn.style.display = 'none';
-    }
-
-    async function connectInjected() {
-      // select the best injected provider if multiple
-      const eth = window.ethereum?.providers?.length ?
-        window.ethereum.providers.find(p => p.isMetaMask) || window.ethereum.providers[0] :
-        window.ethereum;
-      if (!eth) {
-        alert('No injected wallet found. Install MetaMask/OKX/Bitget, or use QR connect.');
-        return;
-      }
-      eip1193 = eth;
-      try {
-        await eip1193.request({ method: 'eth_requestAccounts' });
-      } catch (err) {
-        statusEl.textContent = 'Error (requestAccounts): ' + (err?.message || err);
-        return;
-      }
-      try {
-        await ensureNetwork(Number(chainSelect.value));
-      } catch (err) {
-        statusEl.textContent = 'Error (ensureNetwork): ' + (err?.message || err);
-        return;
-      }
-      provider = new ethers.BrowserProvider(eip1193);
-      try {
-        signer = await provider.getSigner();
-      } catch (err) {
-        statusEl.textContent = 'Error (getSigner): ' + (err?.message || err);
-        return;
-      }
-      await postConnect();
-    } {
-      const eth = window.ethereum;
-      if (!eth) {
-        alert('No injected wallet found. Install MetaMask/OKX/Bitget, or use QR connect.');
-        return;
-      }
-      eip1193 = eth;
-      await eip1193.request({ method: 'eth_requestAccounts' });
-      await ensureNetwork(Number(chainSelect.value));
-      provider = new ethers.BrowserProvider(eip1193);
-      signer = await provider.getSigner();
-      await postConnect();
-    }
-
-    async function connectQR() {
-      try {
-        await ensureWeb3Modal();
-        const session = await w3m.openModal();
-        // Try to obtain an EIP-1193 provider from the modal
-        eip1193 = session?.getEthereumProvider?.() || session?.provider || window.ethereum;
-        if (!eip1193) throw new Error('No provider returned by WalletConnect');
-        provider = new ethers.BrowserProvider(eip1193);
-        signer = await provider.getSigner();
-        await ensureNetwork(Number(chainSelect.value));
-        await postConnect();
-      } catch (err) {
-        statusEl.textContent = 'WalletConnect error: ' + (err?.message || err);
-      }
-    }
-      const session = await w3m.openModal();
-      eip1193 = session?.getEthereumProvider?.() || session?.provider || window.ethereum; // best-effort
-      if (!eip1193) { alert('Failed to get provider'); return; }
-      provider = new ethers.BrowserProvider(eip1193);
-      signer = await provider.getSigner();
-      await postConnect();
-    }
-
-    async function postConnect() {
-      wireProviderEvents();
-      const addr = await signer.getAddress();
-      acctEl.textContent = 'Player: ' + addr;
-      const net = await provider.getNetwork();
-      netEl.textContent = `Network: ${net.chainId}`;
-      const caddr = contractInput.value.trim();
-      if (!caddr) { alert('Enter your deployed contract address, then click Save.'); return; }
-      contract = new ethers.Contract(caddr, ABI, signer);
-      statusEl.textContent = 'Status: connected';
-      updateExplorerLink();
-      try {
+        netEl.textContent = 'Network: ' + net.chainId;
+        const addr = contractInput.value.trim();
+        contract = new ethers.Contract(addr, ABI, signer);
+        statusEl.textContent = 'Status: connected';
         contract.on('Move', (sender, cmd, weight, memo, ev) => {
           appendEvent({ sender, cmd: Number(cmd), memo, txHash: ev.log.transactionHash });
         });
-      } catch {}
-      disconnectBtn.style.display = 'inline-block';
-    }
-
-    connectBtn.onclick = connectQR;
-    connectQRBtn.onclick = connectQR;
-    disconnectBtn.onclick = async () => { try { await w3m?.disconnect?.(); } catch {} resetConnection(); };
-    addMezoBtn.onclick = async () => {
-      try {
-        eip1193 = window.ethereum || eip1193;
-        if (!eip1193) return alert('No wallet found.');
-        await addMezo(Number(chainSelect.value));
-        statusEl.textContent = 'Added network to wallet.';
-      } catch (e) { statusEl.textContent = 'Add network error: ' + (e?.message || e); }
-    };
-    switchMezoBtn.onclick = async () => {
-      try {
-        eip1193 = window.ethereum || eip1193;
-        if (!eip1193) return alert('No wallet found.');
-        await ensureNetwork(Number(chainSelect.value));
-        statusEl.textContent = 'Switched to Mezo.';
-      } catch (e) { statusEl.textContent = 'Switch error: ' + (e?.message || e); }
+      } catch (err) {
+        statusEl.textContent = 'Connect error: ' + (err.message || err);
+      }
     };
 
     function appendEvent(e) {
       const now = new Date().toLocaleTimeString();
       const line = `[${now}] ${e.sender} → cmd=${e.cmd} memo="${e.memo}" tx=${e.txHash?.slice(0,10) || '—'}`;
       const prev = eventsEl.textContent;
-      eventsEl.textContent = prev === 'Recent events (client-side): none' ? line : prev + "
-" + line;
+      eventsEl.textContent = prev === 'Recent events (client-side): none' ? line : prev + "\n" + line;
     }
 
+    let lastCmd = null;
     padButtons.forEach(btn => {
       btn.addEventListener('click', async () => {
         lastCmd = Number(btn.dataset.cmd);
