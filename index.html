@@ -246,10 +246,20 @@
 
       // UI wiring
       connectBtn.onclick = onConnect;
+      function setPadDisabled(disabled){
+        padButtons.forEach(b=>b.disabled = !!disabled);
+      }
+
       padButtons.forEach(btn => btn.addEventListener('click', async () => {
-        lastCmd = Number(btn.dataset.cmd);
-        say(`Selected command: ${lastCmd}`);
-        await estimate();
+        try {
+          lastCmd = Number(btn.dataset.cmd);
+          const memo = $('memo').value || '';
+          if (!contract) { alert('Connect first.'); return; }
+          setPadDisabled(true);
+          await send(lastCmd, memo);
+        } finally {
+          setPadDisabled(false);
+        }
       }));
       $('send').onclick = async () => {
         if (lastCmd === null){ alert('Press a command button first.'); return; }
