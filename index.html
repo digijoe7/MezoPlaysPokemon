@@ -79,6 +79,8 @@
         <label class="badge">Smart Wallet</label>
         <input id="walletAddr" readonly style="min-width:340px" placeholder="(not created)" />
         <button id="btnCreateWallet" class="primary">Create My Wallet</button>
+        <input id="createAmt" placeholder="Amount (BTC)" style="width:180px" />
+        <button id="btnCreateAndFund" class="primary">Create + Fund</button>
       </div>
       <div class="row" id="walletPanel3" style="margin-bottom:8px; display:none;">
         <label class="badge">Wallet Balance</label>
@@ -230,6 +232,8 @@
       const fundAmtEl       = document.getElementById('fundAmt');
       const btnFund         = document.getElementById('btnFund');
       const btnRefresh      = document.getElementById('btnRefresh');
+      const createAmtEl     = document.getElementById('createAmt');
+      const btnCreateAndFund= document.getElementById('btnCreateAndFund');
 
       // if factory constant is set and we're on Mezo Mainnet, hide manual field
 
@@ -314,10 +318,14 @@
               walletContract = new ethers.Contract(existing, WABI, signer);
               document.getElementById('walletPanel3').style.display = 'flex';
               btnCreateWallet.style.display = 'none';
+              if (btnCreateAndFund) btnCreateAndFund.style.display = 'none';
+              if (createAmtEl) createAmtEl.style.display = 'none';
             } else {
               walletAddrEl.value = '';
               document.getElementById('walletPanel3').style.display = 'none';
               btnCreateWallet.style.display = 'inline-block';
+              if (btnCreateAndFund) btnCreateAndFund.style.display = 'inline-block';
+              if (createAmtEl) createAmtEl.style.display = 'inline-block';
             }
           } catch {}
 
@@ -458,6 +466,33 @@
           say('Wallet ready: ' + wallet);
           await refreshWalletBalance();
         } catch(e){ say('Create failed: ' + (e?.message || e)); }
+      });
+
+      btnCreateAndFund?.addEventListener('click', async () => {
+        try {
+          await ensureInjectedMezo();
+          const owner = await signer.getAddress();
+          const cp    = contractInput.value.trim();
+          const amt   = createAmtEl.value.trim();
+          if (!amt) { alert('Enter amount'); return; }
+          const value = ethers.utils.parseUnits(amt, 18);
+          const fab   = new ethers.Contract(FACTORY_ADDR_MAINNET, FABI, signer);
+          say('Creating wallet & funding…');
+          const tx = await fab.createAndDeposit(owner, cp, { value });
+          const rc = await tx.wait();
+          let wallet;
+          try { const ev = rc.events?.find(e=>e.event==='WalletCreated'); if (ev?.args?.wallet) wallet = ev.args.wallet; } catch {}
+          if (!wallet) wallet = await fab.walletOf(owner);
+          walletAddrEl.value = wallet;
+          walletContract = new ethers.Contract(wallet, WABI, signer);
+          document.getElementById('walletPanel3').style.display = 'flex';
+          if (btnCreateWallet) btnCreateWallet.style.display = 'none';
+          if (btnCreateAndFund) btnCreateAndFund.style.display = 'none';
+          if (createAmtEl) createAmtEl.style.display = 'none';
+          await refreshOwnerBalance();
+          await refreshWalletBalance();
+          say('Wallet ready & funded.');
+        } catch(e){ say('Create+Fund failed: ' + (e?.message || e)); }
       });
 
       btnFund?.addEventListener('click', async () => {
