@@ -268,10 +268,15 @@ let RELAYER_ADDRESS = ((window.RELAYER_ADDRESS || localStorage.getItem('relayerA
       function explorerBase(){
         return Number(chainSelect.value) === MEZO_MAINNET ? 'https://explorer.mezo.org' : 'https://explorer.test.mezo.org';
       }
-      function updateExplorerLink(){
-        const addr = contractInput.value.trim();
+      function updateExplorerLink() {
+      try {
+        const addr = (contractInput?.value || '').trim();
         if (!addr) return;
-        $('expl').href = `${explorerBase()}/address/${addr}`;
+        const base = explorerBase();
+        const a = document.getElementById('expl');
+        if (a) a.href = base + '/address/' + addr;
+      } catch (e) { console.error('updateExplorerLink error', e); }
+    }/address/${addr}`;
       }
       updateExplorerLink();
 
@@ -687,6 +692,54 @@ window.addEventListener('load', bindConnect);
         eth.__mezoWrapped = true;
       }
       window.addEventListener('DOMContentLoaded', wrapAddChain);
+    })();
+  </script>
+
+  <!-- Fallback connector: if main script fails to bind, still open wallet prompt -->
+  <script>
+    (function(){
+      const btn = document.getElementById('connect');
+      if (!btn) return;
+      btn.addEventListener('click', async () => {
+        try {
+          if (typeof window.onConnect === 'function') {
+            // main handler exists
+            return;
+          }
+          if (!window.ethereum) { alert('No injected wallet found (MetaMask/Rabby/OKX).'); return; }
+          await window.ethereum.request({ method: 'eth_requestAccounts' });
+          const accs = await window.ethereum.request({ method: 'eth_accounts' });
+          const acctEl = document.getElementById('acct');
+          if (acctEl) acctEl.textContent = accs[0] ? ('Player: ' + accs[0]) : 'Not connected';
+        } catch (e) {
+          console.error(e);
+          alert('Wallet connect failed: ' + (e?.message || e));
+        }
+      }, { capture: true });
+    })();
+  </script>
+</body>
+</html>
+  <!-- Fallback connector: make sure Connect works even if main script errored -->
+  <script>
+    (function(){
+      var btn = document.getElementById('connect');
+      if (!btn) return;
+      btn.addEventListener('click', async function(){
+        try {
+          if (window.ethereum) {
+            await window.ethereum.request({ method: 'eth_requestAccounts' });
+            var accs = await window.ethereum.request({ method: 'eth_accounts' });
+            var acctEl = document.getElementById('acct');
+            if (acctEl) acctEl.textContent = accs[0] ? ('Player: ' + accs[0]) : 'Not connected';
+          } else {
+            alert('No injected wallet found. Install MetaMask/Rabby/OKX.');
+          }
+        } catch (e) {
+          console.error(e);
+          alert('Wallet connect failed: ' + (e && e.message ? e.message : e));
+        }
+      }, { once: false });
     })();
   </script>
 </body>
