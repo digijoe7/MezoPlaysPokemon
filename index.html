@@ -340,6 +340,9 @@
         const hash = (e.txHash || e.txhash || e.hash || '').slice(0, 10) || '—';
         const line = `[${now}] ${e.sender} → cmd=${e.cmd} memo="${e.memo}" tx=${hash}`;
         const prev = eventsEl.textContent;
+        eventsEl.textContent = prev === 'Recent events (client-side): none' ? line : prev + "\n" + line;
+      }] ${e.sender} → cmd=${e.cmd} memo="${e.memo}" tx=${hash}`;
+        const prev = eventsEl.textContent;
         eventsEl.textContent = prev === 'Recent events (client-side): none' ? line : prev + "
 " + line;
       }
