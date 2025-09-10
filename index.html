@@ -475,8 +475,6 @@
           await refreshWalletBalance();
         } catch(e){ say('Create failed: ' + (e?.message || e)); }
       });
-        } catch(e){ say('Create failed: ' + (e?.message || e)); }
-      });
 
       btnCreateAndFund?.addEventListener('click', async () => {
         try {
@@ -504,8 +502,6 @@
           await refreshWalletBalance();
           await ensureGaslessReady();
           say('Wallet ready & funded.');
-        } catch(e){ say('Create+Fund failed: ' + (e?.message || e)); }
-      });
         } catch(e){ say('Create+Fund failed: ' + (e?.message || e)); }
       });
 
