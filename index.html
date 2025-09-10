@@ -139,6 +139,24 @@
 
   <!-- Ethers v5 (UMD) for injected wallets like MetaMask/Rabby) -->
   <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+  <!-- Relayer config injected -->
+  <script>
+    window.RELAYER_URL = "https://mezo-relayer.onrender.com/relay";
+    window.RELAYER_ADDRESS = "0x974A813950E168c81e4C6B352b3e81A77e80af90";
+    try {
+      localStorage.setItem('relayerUrl', window.RELAYER_URL);
+      localStorage.setItem('relayerAddress', window.RELAYER_ADDRESS);
+    } catch (e) {}
+  </script>
+  <!-- Relayer config injected -->
+  <script>
+    window.RELAYER_URL = "https://mezo-relayer.onrender.com/relay";
+    window.RELAYER_ADDRESS = "0x974A813950E168c81e4C6B352b3e81A77e80af90";
+    try {
+      localStorage.setItem('relayerUrl', window.RELAYER_URL);
+      localStorage.setItem('relayerAddress', window.RELAYER_ADDRESS);
+    } catch (e) {}
+  </sc
   <!-- Early safety wrapper: coerce any 0x7B6C/31596 add/switch to 0x7B7C (31612) -->
   <script>
     (function earlyMezoWrap(){
@@ -210,12 +228,14 @@
       // Optional: gasless relayer mode (set both to enable). If RELAYER_URL is set and
       // the smart wallet's relayer() equals RELAYER_ADDRESS, clicks are sent to the
       // relayer instead of prompting the user's EOA for every tx.
-      const RELAYER_URL = ""; // e.g. https://your-relayer.example.com/relay
-      const RELAYER_ADDRESS = ""; // relayer EOA that will submit transactions
+      // Relayer config: can be set here, via window.RELAYER_URL / window.RELAYER_ADDRESS, or persisted in localStorage
+let RELAYER_URL = (window.RELAYER_URL || localStorage.getItem('relayerUrl') || '').trim();
+let RELAYER_ADDRESS = ((window.RELAYER_ADDRESS || localStorage.getItem('relayerAddress') || '') + '').toLowerCase(); // optional—will be auto-filled from factory if empty
 
       // GasTankFactory ABI (supports registry + payable create)
       const FABI = [
         'function walletOf(address owner) view returns (address)',
+        'function defaultRelayer() view returns (address)',
         'function create(address owner) payable returns (address)',
         'function createAndDeposit(address owner) payable returns (address)',
         'event WalletCreated(address indexed wallet, address indexed owner, uint256 initialDeposit)'
@@ -317,25 +337,22 @@
           acctEl.textContent = `Player: ${addr}`;
           ownerAddrEl.textContent = addr;
 
-          // show network id
           const net = await provider.getNetwork();
           netEl.textContent = `Network: ${net.chainId}`;
 
-          // auto-detect wallet via factory
+          // auto-detect wallet via factory + learn defaultRelayer once
+          let fab;
           try {
-            const fab = new ethers.Contract(FACTORY_ADDR_MAINNET, FABI, signer);
+            fab = new ethers.Contract(FACTORY_ADDR_MAINNET, FABI, signer);
+            if (!RELAYER_ADDRESS) {
+              try { const d = await fab.defaultRelayer(); RELAYER_ADDRESS = d.toLowerCase(); localStorage.setItem('relayerAddress', RELAYER_ADDRESS); } catch {}
+            }
             const existing = await fab.walletOf(addr);
             if (existing && existing !== '0x0000000000000000000000000000000000000000') {
               walletAddrEl.value = existing;
               walletContract = new ethers.Contract(existing, WABI, signer);
               document.getElementById('walletPanel3').style.display = 'flex';
               btnCreateWallet.style.display = 'none';
-              if (btnCreateAndFund) btnCreateAndFund.style.display = 'none';
-              if (createAmtEl) createAmtEl.style.display = 'none';
-              // show gasless toggle only if constants are set and relayer mismatch
-              if (RELAYER_URL && RELAYER_ADDRESS) {
-                try { const r = await walletContract.relayer(); btnEnableGasless.style.display = (r?.toLowerCase?.() !== RELAYER_ADDRESS.toLowerCase()) ? 'inline-block' : 'none'; } catch {}
-              }
               if (btnCreateAndFund) btnCreateAndFund.style.display = 'none';
               if (createAmtEl) createAmtEl.style.display = 'none';
             } else {
@@ -347,17 +364,13 @@
             }
           } catch {}
 
-          // events stream (best-effort)
-          try {
-            contract.on('Move', (sender, cmd, weight, memo, ev) => {
-              appendEvent({ sender, cmd: Number(cmd), memo, txHash: ev.transactionHash });
-            });
-          } catch {}
+          try { contract.on('Move', (sender, cmd, weight, memo, ev) => { appendEvent({ sender, cmd: Number(cmd), memo, txHash: ev.transactionHash }); }); } catch {}
 
           await refreshOwnerBalance();
           await refreshWalletBalance();
           say('Status: connected');
-        } catch (err){
+        } catch (err){ console.error(err); say('Connect error: ' + (err?.message || err)); }
+      } catch (err){
           console.error(err);
           say('Connect error: ' + (err?.message || err));
         }
@@ -385,15 +398,46 @@
       }
 
       async function send(cmd, memo){
-        // If a configured relayer is available and wallet's relayer matches, send to backend
-        if (walletAddrEl.value && RELAYER_URL && RELAYER_ADDRESS && walletContract) {
+        // If we have a smart wallet and a relayer URL, try server relay first (no EOA popups)
+        if (walletAddrEl.value && RELAYER_URL) {
           try {
-            const configured = await walletContract.relayer();
-            if (configured?.toLowerCase?.() === RELAYER_ADDRESS.toLowerCase()) {
-              say('Relaying via server…');
-              const res = await fetch(RELAYER_URL, {
-                method: 'POST',
-                headers: { 'content-type': 'application/json' },
+            say('Relaying via server…');
+            const res = await fetch(RELAYER_URL, {
+              method: 'POST', headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ wallet: walletAddrEl.value, cmd, memo, chainId: MEZO_MAINNET })
+            });
+            const out = await res.json().catch(()=>({}));
+            if (!res.ok) throw new Error(out?.error || res.statusText);
+            lastEl.textContent = 'Last tx: ' + (out.hash || out.txhash || out.txHash || '—');
+            say('Relayed');
+            return;
+          } catch (e) {
+            console.warn('Relayer failed, falling back to on-chain', e);
+          }
+        }
+
+        if (walletAddrEl.value) {
+          // Fallback: direct call from EOA to the smart wallet (will prompt once per tx)
+          try{
+            if (!walletContract) walletContract = new ethers.Contract(walletAddrEl.value, WABI, signer);
+            say('Sending via smart wallet…');
+            const tx = await walletContract.relayMove(cmd, memo, { gasLimit: 500000 });
+            lastEl.textContent = 'Last tx: ' + tx.hash;
+            const rc = await tx.wait();
+            say('Smart wallet relayed in block ' + rc.blockNumber);
+          } catch(e){ console.error(e); say('Smart wallet error: ' + (e?.message || e)); }
+          return;
+        }
+
+        // Last resort: call ChainPlays directly (prompts EOA)
+        try {
+          say('Sending…');
+          const tx = await contract.move(cmd, memo, { gasLimit: 300000 });
+          lastEl.textContent = 'Last tx: ' + tx.hash;
+          const rc = await tx.wait();
+          say('Mined in block ' + rc.blockNumber);
+        } catch (e){ console.error(e); say('Error: ' + (e?.error?.message || e?.data?.message || e?.message || e)); }
+      },
                 body: JSON.stringify({
                   wallet: walletAddrEl.value,
                   cmd, memo,
@@ -522,7 +566,7 @@
           const value = ethers.utils.parseUnits(amt, 18);
           const fab   = new ethers.Contract(FACTORY_ADDR_MAINNET, FABI, signer);
           say('Creating wallet & funding…');
-          const tx = await fab.createAndDeposit(owner, cp, { value });
+          const tx = await fab.createAndDeposit(owner, { value });
           const rc = await tx.wait();
           let wallet;
           try { const ev = rc.events?.find(e=>e.event==='WalletCreated'); if (ev?.args?.wallet) wallet = ev.args.wallet; } catch {}
