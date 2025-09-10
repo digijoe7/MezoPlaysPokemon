@@ -148,15 +148,6 @@
       localStorage.setItem('relayerAddress', window.RELAYER_ADDRESS);
     } catch (e) {}
   </script>
-  <!-- Relayer config injected -->
-  <script>
-    window.RELAYER_URL = "https://mezo-relayer.onrender.com/relay";
-    window.RELAYER_ADDRESS = "0x974A813950E168c81e4C6B352b3e81A77e80af90";
-    try {
-      localStorage.setItem('relayerUrl', window.RELAYER_URL);
-      localStorage.setItem('relayerAddress', window.RELAYER_ADDRESS);
-    } catch (e) {}
-  </sc
   <!-- Early safety wrapper: coerce any 0x7B6C/31596 add/switch to 0x7B7C (31612) -->
   <script>
     (function earlyMezoWrap(){
@@ -284,7 +275,7 @@ let RELAYER_ADDRESS = ((window.RELAYER_ADDRESS || localStorage.getItem('relayerA
       }
       updateExplorerLink();
 
-      async function ensureInjectedMezo(){
+      async function ensureInjected(){
         if (!window.ethereum){
           say('No injected wallet found. Install MetaMask/Rabby/OKX or open in the wallet\'s in-app browser.');
           throw new Error('no-injected-wallet');
@@ -332,7 +323,7 @@ let RELAYER_ADDRESS = ((window.RELAYER_ADDRESS || localStorage.getItem('relayerA
       async function onConnect(){
         try {
           say('Connecting…');
-          const { addr } = await ensureInjectedMezo();
+          const { addr } = await ensureInjected();
           contract = getContract().connect(signer);
           acctEl.textContent = `Player: ${addr}`;
           ownerAddrEl.textContent = addr;
@@ -537,7 +528,7 @@ let RELAYER_ADDRESS = ((window.RELAYER_ADDRESS || localStorage.getItem('relayerA
 
       btnCreateWallet?.addEventListener('click', async () => {
         try {
-          await ensureInjectedMezo();
+          await ensureInjected();
           const owner = await signer.getAddress();
           const cp    = contractInput.value.trim();
           const fab   = new ethers.Contract(FACTORY_ADDR_MAINNET, FABI, signer);
@@ -558,7 +549,7 @@ let RELAYER_ADDRESS = ((window.RELAYER_ADDRESS || localStorage.getItem('relayerA
 
       btnCreateAndFund?.addEventListener('click', async () => {
         try {
-          await ensureInjectedMezo();
+          await ensureInjected();
           const owner = await signer.getAddress();
           const cp    = contractInput.value.trim();
           const amt   = createAmtEl.value.trim();
