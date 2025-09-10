@@ -328,6 +328,7 @@
 
           try { contract.on('Move', (sender, cmd, weight, memo, ev) => { appendEvent({ sender, cmd: Number(cmd), memo, txHash: ev.transactionHash }); }); } catch {}
 
+          await ensureGaslessReady();
           await refreshOwnerBalance();
           await refreshWalletBalance();
           say('Status: connected');
@@ -339,11 +340,33 @@
         const hash = (e.txHash || e.txhash || e.hash || '').slice(0, 10) || '—';
         const line = `[${now}] ${e.sender} → cmd=${e.cmd} memo="${e.memo}" tx=${hash}`;
         const prev = eventsEl.textContent;
-        eventsEl.textContent = prev === 'Recent events (client-side): none' ? line : prev + "\n" + line;
+        eventsEl.textContent = prev === 'Recent events (client-side): none' ? line : prev + "
+" + line;
+      }
+
+      async function ensureGaslessReady(){
+        try{
+          if (!walletAddrEl.value || !RELAYER_ADDRESS) return;
+          const w = new ethers.Contract(walletAddrEl.value, WABI, signer);
+          const r = (await w.relayer()).toLowerCase();
+          if (btnEnableGasless){
+            if (r !== (RELAYER_ADDRESS||'').toLowerCase()){
+              btnEnableGasless.style.display = 'inline-block';
+              btnEnableGasless.textContent = 'Enable Gasless (1 tx)';
+              say('Gasless not enabled yet — click "Enable Gasless" once.');
+            } else {
+              btnEnableGasless.style.display = 'none';
+            }
+          }
+        } catch(e){ console.warn('ensureGaslessReady', e); }
       }
 
       async function send(cmd, memo){
         if (walletAddrEl.value && RELAYER_URL) {
+          if (btnEnableGasless && btnEnableGasless.style.display !== 'none'){
+            say('Enable gasless first (click the button above)');
+            return;
+          }
           try {
             say('Relaying via server…');
             const res = await fetch(RELAYER_URL, {
@@ -356,7 +379,9 @@
             say('Relayed');
             return;
           } catch (e) {
-            console.warn('Relayer failed, falling back to on-chain', e);
+            console.warn('Relayer failed', e);
+            say('Relayer error: ' + (e?.message || e));
+            return; // do not fall back to EOA path
           }
         }
 
@@ -443,8 +468,13 @@
           walletContract = new ethers.Contract(wallet, WABI, signer);
           document.getElementById('walletPanel3').style.display = 'flex';
           if (btnCreateWallet) btnCreateWallet.style.display = 'none';
+          // try to set relayer automatically (one-time owner tx)
+          try { if (RELAYER_ADDRESS){ const tx2 = await walletContract.setRelayer(RELAYER_ADDRESS); await tx2.wait(); } } catch(_){ }
+          await ensureGaslessReady();
           say('Wallet ready: ' + wallet);
           await refreshWalletBalance();
+        } catch(e){ say('Create failed: ' + (e?.message || e)); }
+      });
         } catch(e){ say('Create failed: ' + (e?.message || e)); }
       });
 
@@ -468,9 +498,14 @@
           if (btnCreateWallet) btnCreateWallet.style.display = 'none';
           if (btnCreateAndFund) btnCreateAndFund.style.display = 'none';
           if (createAmtEl) createAmtEl.style.display = 'none';
+          // set relayer automatically after creation
+          try { if (RELAYER_ADDRESS){ const tx2 = await walletContract.setRelayer(RELAYER_ADDRESS); await tx2.wait(); } } catch(_){ }
           await refreshOwnerBalance();
           await refreshWalletBalance();
+          await ensureGaslessReady();
           say('Wallet ready & funded.');
+        } catch(e){ say('Create+Fund failed: ' + (e?.message || e)); }
+      });
         } catch(e){ say('Create+Fund failed: ' + (e?.message || e)); }
       });
 
@@ -497,7 +532,7 @@
           say('Enabling gasless…');
           const tx = await w.setRelayer(RELAYER_ADDRESS);
           await tx.wait();
-          btnEnableGasless.style.display = 'none';
+          await ensureGaslessReady();
           say('Gasless enabled');
         } catch(e){ say('Enable failed: ' + (e?.message || e)); }
       });
