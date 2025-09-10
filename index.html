@@ -89,11 +89,6 @@
         <button id="btnFund" class="primary">Fund</button>
         <button id="btnRefresh" class="secondary">Refresh</button>
         <button id="btnEnableGasless" class="secondary" style="display:none">Enable Gasless</button>
-      </div>
-        <input id="fundAmt" placeholder="Amount (BTC)" style="width:180px" />
-        <button id="btnFund" class="primary">Fund</button>
-        <button id="btnRefresh" class="secondary">Refresh</button>
-      </div>
 
       <div class="row">
         <button id="connect" class="primary">Connect Wallet</button>
@@ -211,19 +206,8 @@
         'function sessionKeyExpiry() view returns (uint64)'
       ];
 
-      // === GasTankFactory config ===
-      // Set this to your deployed factory on Mezo Mainnet for a seamless 1-click experience.
-      // When non-empty, the UI hides the manual Factory field and uses this address automatically.
-      const FACTORY_ADDR_MAINNET = "0xcBcdB04C6D8b90850C3F248a0FE2777C09E2Ed48"; // Mezo Mainnet
-
-      // Optional: gasless relayer mode (set both to enable). If RELAYER_URL is set and
-      // the smart wallet's relayer() equals RELAYER_ADDRESS, clicks are sent to the
-      // relayer instead of prompting the user's EOA for every tx.
-      // Relayer config: can be set here, via window.RELAYER_URL / window.RELAYER_ADDRESS, or persisted in localStorage
-let RELAYER_URL = (window.RELAYER_URL || localStorage.getItem('relayerUrl') || '').trim();
-let RELAYER_ADDRESS = ((window.RELAYER_ADDRESS || localStorage.getItem('relayerAddress') || '') + '').toLowerCase(); // optional—will be auto-filled from factory if empty
-
-      // GasTankFactory ABI (supports registry + payable create)
+      // === GasTankFactory V3 ===
+      const FACTORY_ADDR_MAINNET = '0xcBcdB04C6D8b90850C3F248a0FE2777C09E2Ed48';
       const FABI = [
         'function walletOf(address owner) view returns (address)',
         'function defaultRelayer() view returns (address)',
@@ -231,6 +215,10 @@ let RELAYER_ADDRESS = ((window.RELAYER_ADDRESS || localStorage.getItem('relayerA
         'function createAndDeposit(address owner) payable returns (address)',
         'event WalletCreated(address indexed wallet, address indexed owner, uint256 initialDeposit)'
       ];
+
+      // Relayer config (from window or localStorage)
+      let RELAYER_URL = (window.RELAYER_URL || localStorage.getItem('relayerUrl') || '').trim();
+      let RELAYER_ADDRESS = ((window.RELAYER_ADDRESS || localStorage.getItem('relayerAddress') || '') + '').toLowerCase();
 
       // === DOM ===
       const $ = (id) => document.getElementById(id);
@@ -244,21 +232,17 @@ let RELAYER_ADDRESS = ((window.RELAYER_ADDRESS || localStorage.getItem('relayerA
       const eventsEl     = $('events');
       const contractInput= $('contract');
       const chainSelect  = $('chain');
-
-      // smart wallet DOM (simplified)
-      const ownerAddrEl     = document.getElementById('ownerAddr');
-      const ownerBalEl      = document.getElementById('ownerBal');
-      const walletAddrEl    = document.getElementById('walletAddr');
-      const btnCreateWallet = document.getElementById('btnCreateWallet');
-      const walletBalEl     = document.getElementById('walletBal');
-      const fundAmtEl       = document.getElementById('fundAmt');
-      const btnFund         = document.getElementById('btnFund');
-      const btnRefresh      = document.getElementById('btnRefresh');
-      const btnEnableGasless = document.getElementById('btnEnableGasless');
-      const createAmtEl     = document.getElementById('createAmt');
-      const btnCreateAndFund= document.getElementById('btnCreateAndFund');
-
-      // if factory constant is set and we're on Mezo Mainnet, hide manual field
+      const ownerAddrEl  = $('ownerAddr');
+      const ownerBalEl   = $('ownerBal');
+      const walletAddrEl = $('walletAddr');
+      const btnCreateWallet   = $('btnCreateWallet');
+      const walletBalEl       = $('walletBal');
+      const fundAmtEl         = $('fundAmt');
+      const btnFund           = $('btnFund');
+      const btnRefresh        = $('btnRefresh');
+      const btnEnableGasless  = $('btnEnableGasless');
+      const createAmtEl       = $('createAmt');
+      const btnCreateAndFund  = $('btnCreateAndFund');
 
       let provider, signer, contract, lastCmd = null, sending = false;
       let walletContract = null; // GasTankWallet instance
@@ -268,15 +252,13 @@ let RELAYER_ADDRESS = ((window.RELAYER_ADDRESS || localStorage.getItem('relayerA
       function explorerBase(){
         return Number(chainSelect.value) === MEZO_MAINNET ? 'https://explorer.mezo.org' : 'https://explorer.test.mezo.org';
       }
-      function updateExplorerLink() {
-      try {
-        const addr = (contractInput?.value || '').trim();
-        if (!addr) return;
-        const base = explorerBase();
-        const a = document.getElementById('expl');
-        if (a) a.href = base + '/address/' + addr;
-      } catch (e) { console.error('updateExplorerLink error', e); }
-    }/address/${addr}`;
+      function updateExplorerLink(){
+        try {
+          const addr = (contractInput?.value || '').trim();
+          if (!addr) return;
+          const a = document.getElementById('expl');
+          if (a) a.href = explorerBase() + '/address/' + addr;
+        } catch (e) { console.error('updateExplorerLink error', e); }
       }
       updateExplorerLink();
 
@@ -293,18 +275,14 @@ let RELAYER_ADDRESS = ((window.RELAYER_ADDRESS || localStorage.getItem('relayerA
         const net  = await provider.getNetwork();
         acctEl.textContent = `Player: ${addr}`;
         netEl.textContent  = `Network: ${net.chainId}`;
-        // ensure Mezo (31612)
         if (net.chainId !== MEZO_MAINNET){
           try {
             await window.ethereum.request({ method:'wallet_switchEthereumChain', params:[{ chainId: MEZO_PARAMS.chainId }] });
           } catch (e){
             if (e.code === 4902 || String(e.message).includes('Unrecognized chain')){
               await window.ethereum.request({ method:'wallet_addEthereumChain', params:[MEZO_PARAMS] });
-            } else {
-              throw e;
-            }
+            } else { throw e; }
           }
-          // refresh provider network state
           provider = new ethers.providers.Web3Provider(window.ethereum, 'any');
           signer = provider.getSigner();
           const net2 = await provider.getNetwork();
@@ -319,46 +297,33 @@ let RELAYER_ADDRESS = ((window.RELAYER_ADDRESS || localStorage.getItem('relayerA
         return new ethers.Contract(addr, ABI, signer || provider);
       }
 
-      function getWallet(){
-        const waddr = walletAddrEl?.value?.trim();
-        if (!waddr) throw new Error('Missing smart wallet address');
-        return new ethers.Contract(waddr, WABI, signer || provider);
-      }
-
       async function onConnect(){
         try {
           say('Connecting…');
           const { addr } = await ensureInjected();
           contract = getContract().connect(signer);
-          acctEl.textContent = `Player: ${addr}`;
           ownerAddrEl.textContent = addr;
 
-          const net = await provider.getNetwork();
-          netEl.textContent = `Network: ${net.chainId}`;
-
-          // auto-detect wallet via factory + learn defaultRelayer once
-          let fab;
-          try {
-            fab = new ethers.Contract(FACTORY_ADDR_MAINNET, FABI, signer);
-            if (!RELAYER_ADDRESS) {
-              try { const d = await fab.defaultRelayer(); RELAYER_ADDRESS = d.toLowerCase(); localStorage.setItem('relayerAddress', RELAYER_ADDRESS); } catch {}
-            }
-            const existing = await fab.walletOf(addr);
-            if (existing && existing !== '0x0000000000000000000000000000000000000000') {
-              walletAddrEl.value = existing;
-              walletContract = new ethers.Contract(existing, WABI, signer);
-              document.getElementById('walletPanel3').style.display = 'flex';
-              btnCreateWallet.style.display = 'none';
-              if (btnCreateAndFund) btnCreateAndFund.style.display = 'none';
-              if (createAmtEl) createAmtEl.style.display = 'none';
-            } else {
-              walletAddrEl.value = '';
-              document.getElementById('walletPanel3').style.display = 'none';
-              btnCreateWallet.style.display = 'inline-block';
-              if (btnCreateAndFund) btnCreateAndFund.style.display = 'inline-block';
-              if (createAmtEl) createAmtEl.style.display = 'inline-block';
-            }
-          } catch {}
+          // learn default relayer + existing wallet
+          const fab = new ethers.Contract(FACTORY_ADDR_MAINNET, FABI, signer);
+          if (!RELAYER_ADDRESS) {
+            try { const d = await fab.defaultRelayer(); RELAYER_ADDRESS = d.toLowerCase(); localStorage.setItem('relayerAddress', RELAYER_ADDRESS); } catch {}
+          }
+          const existing = await fab.walletOf(addr);
+          if (existing && existing !== ethers.constants.AddressZero) {
+            walletAddrEl.value = existing;
+            walletContract = new ethers.Contract(existing, WABI, signer);
+            document.getElementById('walletPanel3').style.display = 'flex';
+            if (btnCreateWallet) btnCreateWallet.style.display = 'none';
+            if (btnCreateAndFund) btnCreateAndFund.style.display = 'none';
+            if (createAmtEl) createAmtEl.style.display = 'none';
+          } else {
+            walletAddrEl.value = '';
+            document.getElementById('walletPanel3').style.display = 'none';
+            if (btnCreateWallet) btnCreateWallet.style.display = 'inline-block';
+            if (btnCreateAndFund) btnCreateAndFund.style.display = 'inline-block';
+            if (createAmtEl) createAmtEl.style.display = 'inline-block';
+          }
 
           try { contract.on('Move', (sender, cmd, weight, memo, ev) => { appendEvent({ sender, cmd: Number(cmd), memo, txHash: ev.transactionHash }); }); } catch {}
 
@@ -366,10 +331,6 @@ let RELAYER_ADDRESS = ((window.RELAYER_ADDRESS || localStorage.getItem('relayerA
           await refreshWalletBalance();
           say('Status: connected');
         } catch (err){ console.error(err); say('Connect error: ' + (err?.message || err)); }
-      } catch (err){
-          console.error(err);
-          say('Connect error: ' + (err?.message || err));
-        }
       }
 
       function appendEvent(e){
@@ -379,22 +340,7 @@ let RELAYER_ADDRESS = ((window.RELAYER_ADDRESS || localStorage.getItem('relayerA
         eventsEl.textContent = prev === 'Recent events (client-side): none' ? line : prev + "\n" + line;
       }
 
-      async function estimate(){
-        try {
-          if (!contract) return;
-          const memo = $('memo').value || '';
-          const gas  = await contract.estimateGas.move(lastCmd, memo);
-          const fee  = await provider.getFeeData();
-          const price= fee.gasPrice || fee.maxFeePerGas || ethers.BigNumber.from(0);
-          const cost = gas.mul(price);
-          gasEl.textContent = `Gas est.: ~${gas.toString()} @ ${ethers.utils.formatUnits(price, 9)} gwei → cost ≈ ${ethers.utils.formatUnits(cost, 18)} BTC`;
-        } catch {
-          gasEl.textContent = 'Gas est.: (failed to estimate — will send anyway)';
-        }
-      }
-
       async function send(cmd, memo){
-        // If we have a smart wallet and a relayer URL, try server relay first (no EOA popups)
         if (walletAddrEl.value && RELAYER_URL) {
           try {
             say('Relaying via server…');
@@ -413,7 +359,6 @@ let RELAYER_ADDRESS = ((window.RELAYER_ADDRESS || localStorage.getItem('relayerA
         }
 
         if (walletAddrEl.value) {
-          // Fallback: direct call from EOA to the smart wallet (will prompt once per tx)
           try{
             if (!walletContract) walletContract = new ethers.Contract(walletAddrEl.value, WABI, signer);
             say('Sending via smart wallet…');
@@ -425,7 +370,6 @@ let RELAYER_ADDRESS = ((window.RELAYER_ADDRESS || localStorage.getItem('relayerA
           return;
         }
 
-        // Last resort: call ChainPlays directly (prompts EOA)
         try {
           say('Sending…');
           const tx = await contract.move(cmd, memo, { gasLimit: 300000 });
@@ -433,53 +377,8 @@ let RELAYER_ADDRESS = ((window.RELAYER_ADDRESS || localStorage.getItem('relayerA
           const rc = await tx.wait();
           say('Mined in block ' + rc.blockNumber);
         } catch (e){ console.error(e); say('Error: ' + (e?.error?.message || e?.data?.message || e?.message || e)); }
-      },
-                body: JSON.stringify({
-                  wallet: walletAddrEl.value,
-                  cmd, memo,
-                  chainId: MEZO_MAINNET,
-                })
-              });
-              const out = await res.json().catch(()=>({}));
-              if (!res.ok) throw new Error(out?.error || res.statusText);
-              lastEl.textContent = 'Last tx: ' + (out.hash || out.txhash || out.txHash || '—');
-              say('Relayed');
-              return;
-            }
-          } catch (e) {
-            console.warn('Relayer path failed, falling back to on-chain tx', e);
-          }
-        }
-
-        if (walletAddrEl.value) {
-          // Prefer smart wallet direct call if present
-          try{
-            if (!walletContract) walletContract = new ethers.Contract(walletAddrEl.value, WABI, signer);
-            say('Sending via smart wallet…');
-            const tx = await walletContract.relayMove(cmd, memo, { gasLimit: 500000 });
-            lastEl.textContent = 'Last tx: ' + tx.hash;
-            const rc = await tx.wait();
-            say('Smart wallet relayed in block ' + rc.blockNumber);
-          } catch(e){
-            console.error(e);
-            say('Smart wallet error: ' + (e?.message || e));
-          }
-          return;
-        }
-        // Fallback to direct call
-        try {
-          say('Sending…');
-          const tx = await contract.move(cmd, memo, { gasLimit: 300000 });
-          lastEl.textContent = 'Last tx: ' + tx.hash;
-          const rc = await tx.wait();
-          say('Mined in block ' + rc.blockNumber);
-        } catch (e){
-          console.error(e);
-          say('Error: ' + (e?.error?.message || e?.data?.message || e?.message || e));
-        }
       }
 
-      // Rebuild provider on chain change to avoid ethers v5 NETWORK_ERROR
       if (window.ethereum?.on) {
         window.ethereum.on('chainChanged', async (_cid) => {
           try {
@@ -487,32 +386,23 @@ let RELAYER_ADDRESS = ((window.RELAYER_ADDRESS || localStorage.getItem('relayerA
             signer = provider.getSigner();
             const net = await provider.getNetwork();
             netEl.textContent = `Network: ${net.chainId}`;
-          } catch (e) {
-            statusEl.textContent = 'Reconnected after chain change';
-          }
+          } catch (e) { statusEl.textContent = 'Reconnected after chain change'; }
         });
       }
 
       // UI wiring
       function bindConnect(){
-  if (!connectBtn) return;
-  connectBtn.onclick = async (ev) => {
-    try {
-      ev?.preventDefault?.();
-      await onConnect();
-    } catch (err){
-      console.error(err);
-      statusEl.textContent = 'Connect error: ' + (err?.message || err);
-      alert('Wallet connect failed: ' + (err?.message || err));
-    }
-  };
-}
-bindConnect();
-window.addEventListener('DOMContentLoaded', bindConnect);
-window.addEventListener('load', bindConnect);
-      function setPadDisabled(disabled){
-        padButtons.forEach(b=>b.disabled = !!disabled);
+        if (!connectBtn) return;
+        connectBtn.onclick = async (ev) => {
+          try { ev?.preventDefault?.(); await onConnect(); }
+          catch (err){ console.error(err); statusEl.textContent = 'Connect error: ' + (err?.message || err); alert('Wallet connect failed: ' + (err?.message || err)); }
+        };
       }
+      bindConnect();
+      window.addEventListener('DOMContentLoaded', bindConnect);
+      window.addEventListener('load', bindConnect);
+
+      function setPadDisabled(disabled){ padButtons.forEach(b=>b.disabled = !!disabled); }
 
       padButtons.forEach(btn => btn.addEventListener('click', async () => {
         try {
@@ -521,36 +411,24 @@ window.addEventListener('load', bindConnect);
           if (!contract) { alert('Connect first.'); return; }
           setPadDisabled(true);
           await send(lastCmd, memo);
-        } finally {
-          setPadDisabled(false);
-        }
+        } finally { setPadDisabled(false); }
       }));
       $('send').onclick = async () => {
         if (lastCmd === null){ alert('Press a command button first.'); return; }
         await send(lastCmd, $('memo').value || '');
       };
 
-      // Balances + wallet actions (simple)
       async function refreshOwnerBalance(){
-        try{
-          const bal = await provider.getBalance(await signer.getAddress());
-          ownerBalEl.textContent = ethers.utils.formatUnits(bal, 18) + ' BTC';
-        } catch {}
+        try{ const bal = await provider.getBalance(await signer.getAddress()); ownerBalEl.textContent = ethers.utils.formatUnits(bal, 18) + ' BTC'; } catch {}
       }
       async function refreshWalletBalance(){
-        try{
-          const waddr = walletAddrEl.value.trim();
-          if (!waddr) { walletBalEl.textContent = '—'; return; }
-          const bal = await provider.getBalance(waddr);
-          walletBalEl.textContent = ethers.utils.formatUnits(bal, 18) + ' BTC';
-        } catch { walletBalEl.textContent = '—'; }
+        try{ const waddr = walletAddrEl.value.trim(); if (!waddr) { walletBalEl.textContent = '—'; return; } const bal = await provider.getBalance(waddr); walletBalEl.textContent = ethers.utils.formatUnits(bal, 18) + ' BTC'; } catch { walletBalEl.textContent = '—'; }
       }
 
       btnCreateWallet?.addEventListener('click', async () => {
         try {
           await ensureInjected();
           const owner = await signer.getAddress();
-          const cp    = contractInput.value.trim();
           const fab   = new ethers.Contract(FACTORY_ADDR_MAINNET, FABI, signer);
           say('Creating wallet…');
           const tx = await fab.create(owner);
@@ -561,7 +439,7 @@ window.addEventListener('load', bindConnect);
           walletAddrEl.value = wallet;
           walletContract = new ethers.Contract(wallet, WABI, signer);
           document.getElementById('walletPanel3').style.display = 'flex';
-          btnCreateWallet.style.display = 'none';
+          if (btnCreateWallet) btnCreateWallet.style.display = 'none';
           say('Wallet ready: ' + wallet);
           await refreshWalletBalance();
         } catch(e){ say('Create failed: ' + (e?.message || e)); }
@@ -571,7 +449,6 @@ window.addEventListener('load', bindConnect);
         try {
           await ensureInjected();
           const owner = await signer.getAddress();
-          const cp    = contractInput.value.trim();
           const amt   = createAmtEl.value.trim();
           if (!amt) { alert('Enter amount'); return; }
           const value = ethers.utils.parseUnits(amt, 18);
@@ -607,12 +484,8 @@ window.addEventListener('load', bindConnect);
         } catch(e){ say('Fund failed: ' + (e?.message || e)); }
       });
 
-      btnRefresh?.addEventListener('click', async () => {
-        await refreshOwnerBalance();
-        await refreshWalletBalance();
-      });
+      btnRefresh?.addEventListener('click', async () => { await refreshOwnerBalance(); await refreshWalletBalance(); });
 
-      // One-time setup: set relayer address so clicks can be sent to backend without popups
       btnEnableGasless?.addEventListener('click', async () => {
         try{
           if (!RELAYER_URL || !RELAYER_ADDRESS) { alert('Relayer not configured'); return; }
@@ -626,36 +499,15 @@ window.addEventListener('load', bindConnect);
         } catch(e){ say('Enable failed: ' + (e?.message || e)); }
       });
 
-      // --- Keyboard controls ---
       function keyToCmd(evt){
         const k = evt.key;
-        if (k === 'ArrowUp') return 0;     // Up
-        if (k === 'ArrowDown') return 1;   // Down
-        if (k === 'ArrowLeft') return 2;   // Left
-        if (k === 'ArrowRight') return 3;  // Right
-        if (k && k.length === 1 && k.toLowerCase() === 'a') return 4; // A
-        if (k && k.length === 1 && k.toLowerCase() === 'b') return 5; // B
-        // Optional quality-of-life mappings:
-        if (k === 'Enter') return 6;       // Start
-        if (k === 'Shift') return 7;       // Select
-        return null;
+        if (k === 'ArrowUp') return 0; if (k === 'ArrowDown') return 1; if (k === 'ArrowLeft') return 2; if (k === 'ArrowRight') return 3;
+        if (k && k.length === 1 && k.toLowerCase() === 'a') return 4; if (k && k.length === 1 && k.toLowerCase() === 'b') return 5;
+        if (k === 'Enter') return 6; if (k === 'Shift') return 7; return null;
       }
-
       document.addEventListener('keydown', async (evt) => {
-        const cmd = keyToCmd(evt);
-        if (cmd === null) return;
-        // Prevent the page from scrolling on arrow keys etc.
-        evt.preventDefault();
-        if (!contract) { alert('Connect first.'); return; }
-        if (evt.repeat || sending) return; // ignore key auto-repeat and concurrent sends
-        try {
-          sending = true;
-          setPadDisabled(true);
-          await send(cmd, $('memo').value || '');
-        } finally {
-          sending = false;
-          setPadDisabled(false);
-        }
+        const cmd = keyToCmd(evt); if (cmd === null) return; evt.preventDefault(); if (!contract) { alert('Connect first.'); return; }
+        if (evt.repeat || sending) return; try { sending = true; setPadDisabled(true); await send(cmd, $('memo').value || ''); } finally { sending = false; setPadDisabled(false); }
       });
     })();
   </script>
@@ -716,30 +568,6 @@ window.addEventListener('load', bindConnect);
           alert('Wallet connect failed: ' + (e?.message || e));
         }
       }, { capture: true });
-    })();
-  </script>
-</body>
-</html>
-  <!-- Fallback connector: make sure Connect works even if main script errored -->
-  <script>
-    (function(){
-      var btn = document.getElementById('connect');
-      if (!btn) return;
-      btn.addEventListener('click', async function(){
-        try {
-          if (window.ethereum) {
-            await window.ethereum.request({ method: 'eth_requestAccounts' });
-            var accs = await window.ethereum.request({ method: 'eth_accounts' });
-            var acctEl = document.getElementById('acct');
-            if (acctEl) acctEl.textContent = accs[0] ? ('Player: ' + accs[0]) : 'Not connected';
-          } else {
-            alert('No injected wallet found. Install MetaMask/Rabby/OKX.');
-          }
-        } catch (e) {
-          console.error(e);
-          alert('Wallet connect failed: ' + (e && e.message ? e.message : e));
-        }
-      }, { once: false });
     })();
   </script>
 </body>
