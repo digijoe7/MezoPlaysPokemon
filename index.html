@@ -88,6 +88,11 @@
         <input id="fundAmt" placeholder="Amount (BTC)" style="width:180px" />
         <button id="btnFund" class="primary">Fund</button>
         <button id="btnRefresh" class="secondary">Refresh</button>
+        <button id="btnEnableGasless" class="secondary" style="display:none">Enable Gasless</button>
+      </div>
+        <input id="fundAmt" placeholder="Amount (BTC)" style="width:180px" />
+        <button id="btnFund" class="primary">Fund</button>
+        <button id="btnRefresh" class="secondary">Refresh</button>
       </div>
 
       <div class="row">
@@ -200,13 +205,19 @@
       // === GasTankFactory config ===
       // Set this to your deployed factory on Mezo Mainnet for a seamless 1-click experience.
       // When non-empty, the UI hides the manual Factory field and uses this address automatically.
-      const FACTORY_ADDR_MAINNET = "0x72EC50a581AF9A5e656Aa4FA1785AfF6444892C6"; // TODO: paste your deployed factory address here
+      const FACTORY_ADDR_MAINNET = "0xcBcdB04C6D8b90850C3F248a0FE2777C09E2Ed48"; // Mezo Mainnet
+
+      // Optional: gasless relayer mode (set both to enable). If RELAYER_URL is set and
+      // the smart wallet's relayer() equals RELAYER_ADDRESS, clicks are sent to the
+      // relayer instead of prompting the user's EOA for every tx.
+      const RELAYER_URL = ""; // e.g. https://your-relayer.example.com/relay
+      const RELAYER_ADDRESS = ""; // relayer EOA that will submit transactions
 
       // GasTankFactory ABI (supports registry + payable create)
       const FABI = [
         'function walletOf(address owner) view returns (address)',
-        'function create(address owner, address chainPlays) payable returns (address)',
-        'function createAndDeposit(address owner, address chainPlays) payable returns (address)',
+        'function create(address owner) payable returns (address)',
+        'function createAndDeposit(address owner) payable returns (address)',
         'event WalletCreated(address indexed wallet, address indexed owner, uint256 initialDeposit)'
       ];
 
@@ -232,6 +243,7 @@
       const fundAmtEl       = document.getElementById('fundAmt');
       const btnFund         = document.getElementById('btnFund');
       const btnRefresh      = document.getElementById('btnRefresh');
+      const btnEnableGasless = document.getElementById('btnEnableGasless');
       const createAmtEl     = document.getElementById('createAmt');
       const btnCreateAndFund= document.getElementById('btnCreateAndFund');
 
@@ -320,6 +332,12 @@
               btnCreateWallet.style.display = 'none';
               if (btnCreateAndFund) btnCreateAndFund.style.display = 'none';
               if (createAmtEl) createAmtEl.style.display = 'none';
+              // show gasless toggle only if constants are set and relayer mismatch
+              if (RELAYER_URL && RELAYER_ADDRESS) {
+                try { const r = await walletContract.relayer(); btnEnableGasless.style.display = (r?.toLowerCase?.() !== RELAYER_ADDRESS.toLowerCase()) ? 'inline-block' : 'none'; } catch {}
+              }
+              if (btnCreateAndFund) btnCreateAndFund.style.display = 'none';
+              if (createAmtEl) createAmtEl.style.display = 'none';
             } else {
               walletAddrEl.value = '';
               document.getElementById('walletPanel3').style.display = 'none';
@@ -367,8 +385,34 @@
       }
 
       async function send(cmd, memo){
+        // If a configured relayer is available and wallet's relayer matches, send to backend
+        if (walletAddrEl.value && RELAYER_URL && RELAYER_ADDRESS && walletContract) {
+          try {
+            const configured = await walletContract.relayer();
+            if (configured?.toLowerCase?.() === RELAYER_ADDRESS.toLowerCase()) {
+              say('Relaying via server…');
+              const res = await fetch(RELAYER_URL, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({
+                  wallet: walletAddrEl.value,
+                  cmd, memo,
+                  chainId: MEZO_MAINNET,
+                })
+              });
+              const out = await res.json().catch(()=>({}));
+              if (!res.ok) throw new Error(out?.error || res.statusText);
+              lastEl.textContent = 'Last tx: ' + (out.hash || out.txhash || out.txHash || '—');
+              say('Relayed');
+              return;
+            }
+          } catch (e) {
+            console.warn('Relayer path failed, falling back to on-chain tx', e);
+          }
+        }
+
         if (walletAddrEl.value) {
-          // Prefer smart wallet if present
+          // Prefer smart wallet direct call if present
           try{
             if (!walletContract) walletContract = new ethers.Contract(walletAddrEl.value, WABI, signer);
             say('Sending via smart wallet…');
@@ -454,7 +498,7 @@
           const cp    = contractInput.value.trim();
           const fab   = new ethers.Contract(FACTORY_ADDR_MAINNET, FABI, signer);
           say('Creating wallet…');
-          const tx = await fab.create(owner, cp);
+          const tx = await fab.create(owner);
           const rc = await tx.wait();
           let wallet;
           try { const ev = rc.events?.find(e=>e.event==='WalletCreated'); if (ev?.args?.wallet) wallet = ev.args.wallet; } catch {}
@@ -511,6 +555,20 @@
       btnRefresh?.addEventListener('click', async () => {
         await refreshOwnerBalance();
         await refreshWalletBalance();
+      });
+
+      // One-time setup: set relayer address so clicks can be sent to backend without popups
+      btnEnableGasless?.addEventListener('click', async () => {
+        try{
+          if (!RELAYER_URL || !RELAYER_ADDRESS) { alert('Relayer not configured'); return; }
+          if (!walletAddrEl.value) { alert('Create a wallet first'); return; }
+          const w = new ethers.Contract(walletAddrEl.value, WABI, signer);
+          say('Enabling gasless…');
+          const tx = await w.setRelayer(RELAYER_ADDRESS);
+          await tx.wait();
+          btnEnableGasless.style.display = 'none';
+          say('Gasless enabled');
+        } catch(e){ say('Enable failed: ' + (e?.message || e)); }
       });
 
       // --- Keyboard controls ---
