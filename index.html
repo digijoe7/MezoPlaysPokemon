@@ -89,6 +89,7 @@
         <button id="btnFund" class="primary">Fund</button>
         <button id="btnRefresh" class="secondary">Refresh</button>
         <button id="btnEnableGasless" class="secondary" style="display:none">Enable Gasless</button>
+      </div>
 
       <div class="row">
         <button id="connect" class="primary">Connect Wallet</button>
@@ -337,7 +338,12 @@
         const now = new Date().toLocaleTimeString();
         const line = `[${now}] ${e.sender} → cmd=${e.cmd} memo="${e.memo}" tx=${(e.txHash||'').slice(0,10)||'—'}`;
         const prev = eventsEl.textContent;
-        eventsEl.textContent = prev === 'Recent events (client-side): none' ? line : prev + "\n" + line;
+        eventsEl.textContent = prev === 'Recent events (client-side): none' ? line : prev + "
+" + line;
+      }] ${e.sender} → cmd=${e.cmd} memo="${e.memo}" tx=${(e.txHash||'').slice(0,10)||'—'}`;
+        const prev = eventsEl.textContent;
+        eventsEl.textContent = prev === 'Recent events (client-side): none' ? line : prev + "
+" + line;
       }
 
       async function send(cmd, memo){
@@ -398,6 +404,7 @@
           catch (err){ console.error(err); statusEl.textContent = 'Connect error: ' + (err?.message || err); alert('Wallet connect failed: ' + (err?.message || err)); }
         };
       }
+      window.onConnect = onConnect;
       bindConnect();
       window.addEventListener('DOMContentLoaded', bindConnect);
       window.addEventListener('load', bindConnect);
