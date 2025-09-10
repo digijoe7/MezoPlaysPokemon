@@ -489,7 +489,22 @@ let RELAYER_ADDRESS = ((window.RELAYER_ADDRESS || localStorage.getItem('relayerA
       }
 
       // UI wiring
-      connectBtn.onclick = onConnect;
+      function bindConnect(){
+  if (!connectBtn) return;
+  connectBtn.onclick = async (ev) => {
+    try {
+      ev?.preventDefault?.();
+      await onConnect();
+    } catch (err){
+      console.error(err);
+      statusEl.textContent = 'Connect error: ' + (err?.message || err);
+      alert('Wallet connect failed: ' + (err?.message || err));
+    }
+  };
+}
+bindConnect();
+window.addEventListener('DOMContentLoaded', bindConnect);
+window.addEventListener('load', bindConnect);
       function setPadDisabled(disabled){
         padButtons.forEach(b=>b.disabled = !!disabled);
       }
